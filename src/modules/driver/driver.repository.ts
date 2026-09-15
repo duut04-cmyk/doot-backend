@@ -18,7 +18,8 @@ function mapRow(row: {
   providerId: string;
   providerDriverId: string | null;
   driverName: string | null;
-  driverPhone: string | null;
+  driverPhoneCountryCode: string | null;
+  driverPhoneNumber: string | null;
   driverPhotoUrl: string | null;
   providerRating: PrismaNamespace.Decimal | null;
   vehicleType: string | null;
@@ -38,7 +39,8 @@ function mapRow(row: {
     providerId: row.providerId,
     providerDriverId: row.providerDriverId,
     driverName: row.driverName,
-    driverPhone: row.driverPhone,
+    driverPhoneCountryCode: row.driverPhoneCountryCode,
+    driverPhoneNumber: row.driverPhoneNumber,
     driverPhotoUrl: row.driverPhotoUrl,
     providerRating:
       row.providerRating == null ? null : Number(row.providerRating.toString()),
@@ -64,7 +66,8 @@ export interface IDriverRepository {
       providerId: string;
       providerDriverId: string | null;
       driverName: string | null;
-      driverPhone: string | null;
+      driverPhoneCountryCode: string | null;
+      driverPhoneNumber: string | null;
       driverPhotoUrl: string | null;
       providerRating: number | null;
       vehicleType: string | null;
@@ -111,7 +114,8 @@ export class PrismaDriverRepository implements IDriverRepository {
       providerId: string;
       providerDriverId: string | null;
       driverName: string | null;
-      driverPhone: string | null;
+      driverPhoneCountryCode: string | null;
+      driverPhoneNumber: string | null;
       driverPhotoUrl: string | null;
       providerRating: number | null;
       vehicleType: string | null;
@@ -134,7 +138,8 @@ export class PrismaDriverRepository implements IDriverRepository {
       providerId: input.providerId,
       providerDriverId: input.providerDriverId,
       driverName: input.driverName,
-      driverPhone: input.driverPhone,
+      driverPhoneCountryCode: input.driverPhoneCountryCode,
+      driverPhoneNumber: input.driverPhoneNumber,
       driverPhotoUrl: input.driverPhotoUrl,
       providerRating:
         input.providerRating == null

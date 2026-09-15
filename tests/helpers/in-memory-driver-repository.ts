@@ -41,7 +41,8 @@ export class InMemoryDriverRepository implements IDriverRepository {
       providerId: string;
       providerDriverId: string | null;
       driverName: string | null;
-      driverPhone: string | null;
+      driverPhoneCountryCode: string | null;
+      driverPhoneNumber: string | null;
       driverPhotoUrl: string | null;
       providerRating: number | null;
       vehicleType: string | null;

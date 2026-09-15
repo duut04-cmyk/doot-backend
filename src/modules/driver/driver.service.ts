@@ -32,7 +32,8 @@ function mapDriverFields(driver: NormalizedDriver | null) {
     return {
       providerDriverId: null,
       driverName: null,
-      driverPhone: null,
+      driverPhoneCountryCode: null,
+      driverPhoneNumber: null,
       driverPhotoUrl: null,
       providerRating: null,
       vehicleType: null,
@@ -43,7 +44,8 @@ function mapDriverFields(driver: NormalizedDriver | null) {
   return {
     providerDriverId: driver.providerDriverId,
     driverName: driver.name,
-    driverPhone: driver.phone,
+    driverPhoneCountryCode: driver.phone?.countryCode ?? null,
+    driverPhoneNumber: driver.phone?.number ?? null,
     driverPhotoUrl: driver.photoUrl,
     providerRating: driver.providerRating,
     vehicleType: driver.vehicleType,
@@ -191,8 +193,12 @@ export class DriverService {
               incomingFields.providerDriverId ??
               existingAssigned.providerDriverId,
             driverName: incomingFields.driverName ?? existingAssigned.driverName,
-            driverPhone:
-              incomingFields.driverPhone ?? existingAssigned.driverPhone,
+            driverPhoneCountryCode:
+              incomingFields.driverPhoneCountryCode ??
+              existingAssigned.driverPhoneCountryCode,
+            driverPhoneNumber:
+              incomingFields.driverPhoneNumber ??
+              existingAssigned.driverPhoneNumber,
             driverPhotoUrl:
               incomingFields.driverPhotoUrl ?? existingAssigned.driverPhotoUrl,
             providerRating:

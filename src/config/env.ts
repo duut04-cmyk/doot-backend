@@ -43,11 +43,11 @@ const envSchema = z
       .int()
       .positive()
       .default(30),
-    PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: z.coerce
+    PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS: z.coerce
       .number()
       .int()
       .positive()
-      .default(15),
+      .default(600),
 
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     RESEND_FROM_EMAIL: z.preprocess(
@@ -227,3 +227,6 @@ export const OTP_EXPIRY_SECONDS = env.OTP_EXPIRY_SECONDS;
 export const OTP_MAX_ATTEMPTS = env.OTP_MAX_ATTEMPTS;
 export const OTP_GENERATION_COOLDOWN_SECONDS =
   env.OTP_GENERATION_COOLDOWN_SECONDS;
+
+export const PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS =
+  env.PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS;

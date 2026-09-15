@@ -8,6 +8,7 @@ import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { seedBookedDelivery } from "./helpers/operational-test-helpers.js";
+import { phoneRequest } from "./helpers/phone-test-helpers.js";
 
 describe("DriverService", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -66,7 +67,7 @@ describe("DriverService", () => {
       driver: {
         providerDriverId: "D1",
         name: "Alex",
-        phone: "+919900000001",
+        phone: phoneRequest("+91", "9900000001"),
         photoUrl: null,
         providerRating: 4.5,
         vehicleType: "BIKE",

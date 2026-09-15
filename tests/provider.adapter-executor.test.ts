@@ -11,6 +11,7 @@ import { toServiceabilityRequest } from "../src/modules/provider/adapters/delive
 import type { DeliveryDetailDto } from "../src/modules/delivery/delivery.types.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { seedMockProvider } from "./helpers/provider-adapter-test-helpers.js";
+import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 const sampleDelivery: DeliveryDetailDto = {
   id: "22222222-2222-2222-2222-222222222222",
@@ -19,13 +20,13 @@ const sampleDelivery: DeliveryDetailDto = {
   pickup: {
     addressText: "A",
     contactName: "A",
-    contactPhone: "+911111111111",
+    contactPhone: phoneValue("+91", "1111111111"),
     instructions: null,
   },
   drop: {
     addressText: "B",
     contactName: "B",
-    contactPhone: "+912222222222",
+    contactPhone: phoneValue("+91", "2222222222"),
     instructions: null,
   },
   package: {

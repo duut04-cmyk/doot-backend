@@ -20,14 +20,14 @@ describe("Auth Part 2 sessions", () => {
   let service: AuthService;
   let mailer: {
     sendVerificationEmail: ReturnType<typeof vi.fn>;
-    sendPasswordResetEmail: ReturnType<typeof vi.fn>;
+    sendPasswordResetOtpEmail: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
     repository = new InMemoryAuthRepository();
     mailer = { 
       sendVerificationEmail: vi.fn(async () => undefined),
-      sendPasswordResetEmail: vi.fn(async () => undefined),
+      sendPasswordResetOtpEmail: vi.fn(async () => undefined),
     };
     service = new AuthService(repository, mailer);
   });
@@ -42,7 +42,8 @@ describe("Auth Part 2 sessions", () => {
     await service.signup({
       name: "John Doe",
       email,
-      phone: "+919876543210",
+      phoneCountryCode: "+91",
+      phoneNumber: "9876543210",
       password,
     });
     const user = repository.users.find((item) => item.email === email);

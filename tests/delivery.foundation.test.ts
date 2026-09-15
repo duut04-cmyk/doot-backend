@@ -17,6 +17,7 @@ import {
 import { DeliveryService } from "../src/modules/delivery/delivery.service.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
+import { phoneRequest } from "./helpers/phone-test-helpers.js";
 
 function futureWindow(hoursFromNow = 24) {
   const start = new Date(Date.now() + hoursFromNow * 60 * 60 * 1000);
@@ -32,20 +33,20 @@ function basePayload(overrides?: Record<string, unknown>) {
     pickup: {
       addressText: "12 MG Road, Bengaluru",
       contactName: "Riya Sharma",
-      contactPhone: "+919876543210",
+      contactPhone: phoneRequest("+91", "9876543210"),
       instructions: "Gate 2",
     },
     drop: {
       addressText: "88 Indiranagar, Bengaluru",
       contactName: "Aman Verma",
-      contactPhone: "+919811122233",
+      contactPhone: phoneRequest("+91", "9811122233"),
       instructions: null,
     },
     package: {
       packageType: "FOOD",
       description: "Fresh meal",
       weightKg: 1.8,
-      sizeTier: "MEDIUM",
+      sizeTier: "SMALL",
       quantity: 1,
       photos: [
         {
@@ -140,7 +141,7 @@ describe("Delivery Phase 1 foundation", () => {
 
       expect(result.data.status).toBe("CREATED");
       expect(result.data.reference).toMatch(/^DUTT-\d+$/);
-      expect(result.data.package.sizeTier).toBe("MEDIUM");
+      expect(result.data.package.sizeTier).toBe("SMALL");
       expect(result.data.compliance.accepted).toBe(true);
       expect(result.data.compliance.acceptedAt).toBeTruthy();
       expect(deliveryRepo.deliveries[0]?.statusEvents[0]?.toStatus).toBe("CREATED");
@@ -259,7 +260,7 @@ describe("Delivery Phase 1 foundation", () => {
             pickup: {
               addressText: "A",
               contactName: "B",
-              contactPhone: "9876543210",
+              contactPhone: phoneRequest("+91", "123"),
             },
           }),
         ),

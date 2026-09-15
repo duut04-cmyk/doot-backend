@@ -1,30 +1,29 @@
-export type PasswordResetEmailContent = {
+export type PasswordResetOtpEmailContent = {
   subject: string;
   text: string;
   html: string;
 };
 
-export function buildPasswordResetEmail(input: {
+export function buildPasswordResetOtpEmail(input: {
   appName: string;
   recipientName: string;
-  resetUrl: string;
+  otp: string;
   expiryMinutes: number;
-}): PasswordResetEmailContent {
-  const { appName, recipientName, resetUrl, expiryMinutes } = input;
+}): PasswordResetOtpEmailContent {
+  const { appName, recipientName, otp, expiryMinutes } = input;
   const subject = `Reset your ${appName} password`;
 
   const text = [
     `Hi ${recipientName},`,
     "",
-    `We received a request to reset the password for your ${appName} account.`,
+    `Use the verification code below to reset your ${appName} password:`,
     "",
-    "Use the link below to create a new password:",
-    resetUrl,
+    otp,
     "",
-    `This link expires in ${expiryMinutes} minutes.`,
+    `This code expires in ${expiryMinutes} minutes.`,
     "",
     "If you did not request a password reset, you can safely ignore this email.",
-    "For your security, the link can only be used once.",
+    "For your security, the code can only be used once.",
   ].join("\n");
 
   const html = `<!DOCTYPE html>
@@ -44,13 +43,11 @@ export function buildPasswordResetEmail(input: {
                 <p style="margin:0 0 8px;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#ea580c;">${escapeHtml(appName)}</p>
                 <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">Reset your ${escapeHtml(appName)} password</h1>
                 <p style="margin:0 0 16px;font-size:15px;line-height:1.5;">Hi ${escapeHtml(recipientName)},</p>
-                <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">We received a request to reset the password for your ${escapeHtml(appName)} account.</p>
-                <p style="margin:0 0 24px;text-align:center;">
-                  <a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:15px;font-weight:600;">Reset Password</a>
-                </p>
-                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#4b5563;">This link expires in ${expiryMinutes} minutes.</p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.5;">Use the verification code below to reset your ${escapeHtml(appName)} password:</p>
+                <p style="margin:0 0 20px;font-size:32px;letter-spacing:0.2em;font-weight:700;text-align:center;">${escapeHtml(otp)}</p>
+                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#4b5563;">This code expires in ${expiryMinutes} minutes.</p>
                 <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#6b7280;">If you did not request a password reset, you can safely ignore this email.</p>
-                <p style="margin:0;font-size:13px;line-height:1.5;color:#6b7280;">For your security, the link can only be used once.</p>
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#6b7280;">For your security, the code can only be used once.</p>
               </td>
             </tr>
           </table>

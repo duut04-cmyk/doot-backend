@@ -10,6 +10,7 @@ import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-reposit
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { seedOrchestrationMockProvider } from "./helpers/provider-adapter-test-helpers.js";
+import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 function eligibleOutcome(input: {
   providerId: string;
@@ -102,12 +103,12 @@ describe("OrchestrationService", () => {
         pickup: {
           addressText: "Pickup",
           contactName: "A",
-          contactPhone: "+919876543210",
+          contactPhone: phoneValue("+91", "9876543210"),
         },
         drop: {
           addressText: "Drop",
           contactName: "B",
-          contactPhone: "+919811122233",
+          contactPhone: phoneValue("+91", "9811122233"),
         },
         package: {
           packageType: "FOOD",

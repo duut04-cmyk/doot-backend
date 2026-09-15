@@ -1,6 +1,5 @@
 import { z } from "zod";
-
-const phoneRegex = /^\+?[1-9]\d{7,14}$/;
+import { parseAndValidatePhone } from "../../core/phone/phone.js";
 
 export const passwordSchema = z
   .string()
@@ -18,18 +17,40 @@ export const signupSchema = z.object({
     .trim()
     .email("Invalid email address")
     .transform((value) => value.toLowerCase()),
-  phone: z.preprocess(
-    (value) => {
-      if (typeof value !== "string") {
-        return value;
-      }
-      const trimmed = value.trim();
-      return trimmed === "" ? undefined : trimmed;
-    },
-    z.string().regex(phoneRegex, "Invalid phone number").optional(),
-  ),
+  phoneCountryCode: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  phoneNumber: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   password: passwordSchema,
+}).superRefine((data, ctx) => {
+  const hasCountry = Boolean(data.phoneCountryCode);
+  const hasNumber = Boolean(data.phoneNumber);
+  if (hasCountry !== hasNumber) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Both phoneCountryCode and phoneNumber are required together",
+      path: hasCountry ? ["phoneNumber"] : ["phoneCountryCode"],
+    });
+    return;
+  }
+  if (hasCountry && hasNumber) {
+    try {
+      parseAndValidatePhone(data.phoneCountryCode!, data.phoneNumber!);
+    } catch {
+      ctx.addIssue({
+        code: "custom",
+        message: "Invalid phone number",
+        path: ["phoneNumber"],
+      });
+    }
+  }
 });
+
+function emptyToUndefined(value: unknown) {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
 
 export const verifyOtpSchema = z.object({
   email: z
@@ -76,16 +97,30 @@ export const forgotPasswordSchema = z.object({
     .transform((value) => value.toLowerCase()),
 });
 
-export const resetPasswordSchema = z
-  .object({
-    token: z.string().trim().min(1, "Reset token is required"),
-    password: passwordSchema,
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+export const verifyPasswordResetOtpSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Invalid email address")
+    .transform((value) => value.toLowerCase()),
+  otp: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Verification code must be 6 digits"),
+});
+
+export const resendPasswordResetOtpSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Invalid email address")
+    .transform((value) => value.toLowerCase()),
+});
+
+export const resetPasswordSchema = z.object({
+  resetToken: z.string().trim().min(1, "Reset token is required"),
+  newPassword: passwordSchema,
+});
 
 export const googleLoginSchema = z.object({
   credential: z.string().trim().min(1, "Google credential is required"),
@@ -98,5 +133,11 @@ export type LoginBody = z.infer<typeof loginSchema>;
 export type RefreshSessionBody = z.infer<typeof refreshSessionSchema>;
 export type LogoutBody = z.infer<typeof logoutSchema>;
 export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
+export type VerifyPasswordResetOtpBody = z.infer<
+  typeof verifyPasswordResetOtpSchema
+>;
+export type ResendPasswordResetOtpBody = z.infer<
+  typeof resendPasswordResetOtpSchema
+>;
 export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;
 export type GoogleLoginBody = z.infer<typeof googleLoginSchema>;

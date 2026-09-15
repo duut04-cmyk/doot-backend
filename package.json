@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "db:reset-data": "tsx scripts/reset-database-data.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -28,6 +29,7 @@
     "google-auth-library": "^11.0.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "libphonenumber-js": "^1.13.13",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "resend": "^6.28.0",

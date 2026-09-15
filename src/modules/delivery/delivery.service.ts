@@ -183,13 +183,15 @@ export class DeliveryService {
       pickup: {
         addressText: body.pickup.addressText,
         contactName: body.pickup.contactName,
-        contactPhone: body.pickup.contactPhone,
+        contactPhoneCountryCode: body.pickup.contactPhone.countryCode,
+        contactPhoneNumber: body.pickup.contactPhone.number,
         instructions: body.pickup.instructions ?? null,
       },
       drop: {
         addressText: body.drop.addressText,
         contactName: body.drop.contactName,
-        contactPhone: body.drop.contactPhone,
+        contactPhoneCountryCode: body.drop.contactPhone.countryCode,
+        contactPhoneNumber: body.drop.contactPhone.number,
         instructions: body.drop.instructions ?? null,
       },
       package: {
@@ -217,7 +219,10 @@ export class DeliveryService {
         windowStart,
         windowEnd,
       },
-      complianceAcceptedAt: new Date(),
+      compliance: {
+        accepted: true,
+        acceptedAt: new Date(),
+      },
     };
   }
 }

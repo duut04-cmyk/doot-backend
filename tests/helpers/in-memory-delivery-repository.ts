@@ -105,7 +105,8 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       deliveryId,
       addressText: input.pickup.addressText,
       contactName: input.pickup.contactName,
-      contactPhone: input.pickup.contactPhone,
+      contactPhoneCountryCode: input.pickup.contactPhoneCountryCode,
+      contactPhoneNumber: input.pickup.contactPhoneNumber,
       instructions: input.pickup.instructions,
     };
 
@@ -114,7 +115,8 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       deliveryId,
       addressText: input.drop.addressText,
       contactName: input.drop.contactName,
-      contactPhone: input.drop.contactPhone,
+      contactPhoneCountryCode: input.drop.contactPhoneCountryCode,
+      contactPhoneNumber: input.drop.contactPhoneNumber,
       instructions: input.drop.instructions,
     };
 
@@ -165,7 +167,7 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       id: randomUUID(),
       deliveryId,
       accepted: true,
-      acceptedAt: input.complianceAcceptedAt,
+      acceptedAt: input.compliance.acceptedAt,
     };
 
     const requirements: DeliveryHandlingRequirement[] = input.requirements.map(

@@ -20,7 +20,7 @@ describe("Auth Part 5 authorization", () => {
   let service: AuthService;
   let mailer: {
     sendVerificationEmail: ReturnType<typeof vi.fn>;
-    sendPasswordResetEmail: ReturnType<typeof vi.fn>;
+    sendPasswordResetOtpEmail: ReturnType<typeof vi.fn>;
   };
   let googleVerifier: {
     verifyIdToken: ReturnType<typeof vi.fn>;
@@ -30,7 +30,7 @@ describe("Auth Part 5 authorization", () => {
     repository = new InMemoryAuthRepository();
     mailer = {
       sendVerificationEmail: vi.fn(async () => undefined),
-      sendPasswordResetEmail: vi.fn(async () => undefined),
+      sendPasswordResetOtpEmail: vi.fn(async () => undefined),
     };
     googleVerifier = {
       verifyIdToken: vi.fn(),

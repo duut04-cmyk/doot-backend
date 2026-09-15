@@ -63,12 +63,14 @@ async function main() {
     pickup: {
       addressText: "Saket, New Delhi, Delhi",
       contactName: "Smoke Test",
-      contactPhone: "+919880000001",
+      contactPhoneCountryCode: "+91",
+      contactPhoneNumber: "9880000001",
     },
     drop: {
       addressText: "Janakpuri, New Delhi, Delhi",
       contactName: "Smoke Test",
-      contactPhone: "+919880000002",
+      contactPhoneCountryCode: "+91",
+      contactPhoneNumber: "9880000002",
     },
     package: {
       packageType: "DOCUMENT",
@@ -92,12 +94,14 @@ async function main() {
     pickup: {
       addressText: "Saket, New Delhi, Delhi",
       contactName: "Smoke Test",
-      contactPhone: "+919880000001",
+      contactPhoneCountryCode: "+91",
+      contactPhoneNumber: "9880000001",
     },
     drop: {
       addressText: "Janakpuri, New Delhi, Delhi",
       contactName: "Smoke Test",
-      contactPhone: "+919880000002",
+      contactPhoneCountryCode: "+91",
+      contactPhoneNumber: "9880000002",
     },
     package: {
       packageType: "DOCUMENT",

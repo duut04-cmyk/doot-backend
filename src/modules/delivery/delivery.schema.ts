@@ -5,7 +5,6 @@ import {
   DEFAULT_LIST_PAGE,
   DEFAULT_PACKAGE_QUANTITY,
   DIMENSIONS_REQUIRED_ABOVE_KG,
-  E164_PHONE_REGEX,
   MAX_ADDRESS_LENGTH,
   MAX_CONTACT_NAME_LENGTH,
   MAX_INSTRUCTIONS_LENGTH,
@@ -17,6 +16,7 @@ import {
   MAX_WEIGHT_KG,
   OBJECT_KEY_REGEX,
 } from "./delivery.constants.js";
+import { phoneInputSchema } from "../../core/phone/phone.schema.js";
 import { deriveSizeTier } from "./delivery.types.js";
 
 const packageTypes = ["MEDICINE", "FOOD", "DOCUMENT", "OTHER"] as const;
@@ -57,15 +57,10 @@ const optionalTrimmed = (max: number) =>
     return trimmed === "" ? null : trimmed;
   }, z.string().max(max).nullable());
 
-const e164Phone = z
-  .string()
-  .trim()
-  .regex(E164_PHONE_REGEX, "Phone must be a valid E.164 number (e.g. +919876543210)");
-
 const locationSchema = z.object({
   addressText: trimmedNonEmpty(MAX_ADDRESS_LENGTH, "Address"),
   contactName: trimmedNonEmpty(MAX_CONTACT_NAME_LENGTH, "Contact name"),
-  contactPhone: e164Phone,
+  contactPhone: phoneInputSchema,
   instructions: optionalTrimmed(MAX_INSTRUCTIONS_LENGTH),
 });
 

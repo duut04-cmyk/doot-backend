@@ -1,17 +1,15 @@
-import { env, getEmailFromAddress } from "../../config/env.js";
+import {
+  env,
+  getEmailFromAddress,
+  OTP_EXPIRY_SECONDS,
+} from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
-import {
-  EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
-  PASSWORD_RESET_TOKEN_EXPIRY_MINUTES,
-} from "../../modules/auth/auth.constants.js";
-import {
-  emailDomain,
-  getPasswordResetTokenExpiresMinutes,
-} from "../../modules/auth/auth.crypto.js";
+import { EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES } from "../../modules/auth/auth.constants.js";
+import { emailDomain } from "../../modules/auth/auth.crypto.js";
 import { sendWithResend } from "./resend.client.js";
-import { buildPasswordResetEmail } from "./templates/password-reset-email.js";
+import { buildPasswordResetOtpEmail } from "./templates/password-reset-otp-email.js";
 import { buildVerificationEmail } from "./templates/verification-email.js";
 
 export type SendVerificationEmailInput = {
@@ -20,15 +18,15 @@ export type SendVerificationEmailInput = {
   otp: string;
 };
 
-export type SendPasswordResetEmailInput = {
+export type SendPasswordResetOtpEmailInput = {
   to: string;
   recipientName: string;
-  resetUrl: string;
+  otp: string;
 };
 
 export interface EmailSender {
   sendVerificationEmail(input: SendVerificationEmailInput): Promise<void>;
-  sendPasswordResetEmail(input: SendPasswordResetEmailInput): Promise<void>;
+  sendPasswordResetOtpEmail(input: SendPasswordResetOtpEmailInput): Promise<void>;
 }
 
 export class EmailService implements EmailSender {
@@ -83,8 +81,8 @@ export class EmailService implements EmailSender {
     }
   }
 
-  async sendPasswordResetEmail(
-    input: SendPasswordResetEmailInput,
+  async sendPasswordResetOtpEmail(
+    input: SendPasswordResetOtpEmailInput,
   ): Promise<void> {
     const from = getEmailFromAddress();
     if (!env.RESEND_API_KEY || !from) {
@@ -98,13 +96,12 @@ export class EmailService implements EmailSender {
       });
     }
 
-    const content = buildPasswordResetEmail({
+    const expiryMinutes = Math.max(1, Math.ceil(OTP_EXPIRY_SECONDS / 60));
+    const content = buildPasswordResetOtpEmail({
       appName: env.APP_NAME,
       recipientName: input.recipientName,
-      resetUrl: input.resetUrl,
-      expiryMinutes:
-        getPasswordResetTokenExpiresMinutes() ||
-        PASSWORD_RESET_TOKEN_EXPIRY_MINUTES,
+      otp: input.otp,
+      expiryMinutes,
     });
 
     try {
@@ -117,7 +114,7 @@ export class EmailService implements EmailSender {
       });
       logger.info(
         { emailDomain: emailDomain(input.to) },
-        "password_reset_email_sent",
+        "password_reset_otp_email_sent",
       );
     } catch (error) {
       logger.error(

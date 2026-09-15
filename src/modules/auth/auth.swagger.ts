@@ -1,3 +1,5 @@
+import { phoneResponseSchema } from "../../core/phone/phone.swagger.js";
+
 const successMessageSchema = {
   type: "object",
   properties: {
@@ -30,7 +32,7 @@ const publicUserSchema = {
     id: { type: "string", format: "uuid" },
     name: { type: "string" },
     email: { type: "string", format: "email" },
-    phone: { type: "string", nullable: true },
+    phone: phoneResponseSchema,
     emailVerified: { type: "boolean" },
     role: { type: "string", enum: ["CUSTOMER", "ADMIN"] },
   },
@@ -46,10 +48,15 @@ export const authSwaggerComponents = {
     properties: {
       name: { type: "string", example: "John Doe", minLength: 2, maxLength: 100 },
       email: { type: "string", format: "email", example: "john@example.com" },
-      phone: {
+      phoneCountryCode: {
         type: "string",
-        example: "+919876543210",
-        description: "Optional phone number in E.164-like format",
+        example: "+91",
+        description: "Optional international dialing code (required with phoneNumber)",
+      },
+      phoneNumber: {
+        type: "string",
+        example: "9876543210",
+        description: "Optional national number (required with phoneCountryCode)",
       },
       password: {
         type: "string",
@@ -113,24 +120,63 @@ export const authSwaggerComponents = {
       email: { type: "string", format: "email", example: "john@example.com" },
     },
   },
+  VerifyPasswordResetOtpRequest: {
+    type: "object",
+    required: ["email", "otp"],
+    properties: {
+      email: { type: "string", format: "email", example: "john@example.com" },
+      otp: {
+        type: "string",
+        pattern: "^\\d{6}$",
+        example: "123456",
+        description: "6-digit password reset verification code",
+      },
+    },
+  },
+  PasswordResetVerifyResponse: {
+    type: "object",
+    properties: {
+      success: { type: "boolean", example: true },
+      data: {
+        type: "object",
+        properties: {
+          resetToken: {
+            type: "string",
+            example: "fake-reset-verification-token-placeholder",
+            description:
+              "Short-lived opaque token authorizing password reset only",
+          },
+          expiresAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-09-15T10:10:00.000Z",
+          },
+        },
+      },
+    },
+  },
+  ResendPasswordResetOtpRequest: {
+    type: "object",
+    required: ["email"],
+    properties: {
+      email: { type: "string", format: "email", example: "john@example.com" },
+    },
+  },
   ResetPasswordRequest: {
     type: "object",
-    required: ["token", "password", "confirmPassword"],
+    required: ["resetToken", "newPassword"],
     properties: {
-      token: {
+      resetToken: {
         type: "string",
-        description: "Opaque password-reset token from the email link",
+        description:
+          "Opaque verification token returned by verify-password-reset-otp",
+        example: "fake-reset-verification-token-placeholder",
       },
-      password: {
+      newPassword: {
         type: "string",
         format: "password",
         minLength: 8,
         maxLength: 128,
-        example: "NewStrongPassword123!",
-      },
-      confirmPassword: {
-        type: "string",
-        format: "password",
         example: "NewStrongPassword123!",
       },
     },
@@ -201,7 +247,7 @@ export const authSwaggerComponents = {
               id: { type: "string", format: "uuid" },
               name: { type: "string" },
               email: { type: "string", format: "email" },
-              phone: { type: "string", nullable: true },
+              phone: phoneResponseSchema,
               emailVerified: { type: "boolean" },
               status: {
                 type: "string",
@@ -488,9 +534,9 @@ export const authSwaggerPaths = {
   "/api/v1/auth/forgot-password": {
     post: {
       tags: ["Auth"],
-      summary: "Request a password reset email",
+      summary: "Request a password reset verification code",
       description:
-        "Always returns a generic success message to avoid account enumeration. Eligible ACTIVE users with a local password receive a one-time reset link.",
+        "Always returns a generic success message to avoid account enumeration. Eligible ACTIVE users with a local password receive a 6-digit OTP by email.",
       requestBody: {
         required: true,
         content: {
@@ -508,7 +554,7 @@ export const authSwaggerPaths = {
               example: {
                 success: true,
                 message:
-                  "If an account exists for this email, a password reset link has been sent.",
+                  "If an account exists for this email, a verification code has been sent.",
               },
             },
           },
@@ -532,12 +578,86 @@ export const authSwaggerPaths = {
       },
     },
   },
+  "/api/v1/auth/verify-password-reset-otp": {
+    post: {
+      tags: ["Auth"],
+      summary: "Verify password reset OTP",
+      description:
+        "Validates the 6-digit email OTP and returns a short-lived opaque resetToken for the final password change step.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/VerifyPasswordResetOtpRequest",
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "OTP verified; reset token issued",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/PasswordResetVerifyResponse",
+              },
+            },
+          },
+        },
+        400: {
+          description: "Invalid, expired, or exhausted OTP",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AuthError" },
+            },
+          },
+        },
+      },
+    },
+  },
+  "/api/v1/auth/resend-password-reset-otp": {
+    post: {
+      tags: ["Auth"],
+      summary: "Resend password reset OTP",
+      description:
+        "Enumeration-safe resend with cooldown. Invalidates the previous unused OTP when a new one is issued.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ResendPasswordResetOtpRequest",
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Generic acknowledgment",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AuthSuccessMessage" },
+            },
+          },
+        },
+        429: {
+          description: "Resend cooldown active",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AuthError" },
+            },
+          },
+        },
+      },
+    },
+  },
   "/api/v1/auth/reset-password": {
     post: {
       tags: ["Auth"],
-      summary: "Reset password with a one-time token",
+      summary: "Reset password with verification token",
       description:
-        "Validates the opaque reset token, updates the bcrypt password hash, marks the token used, and revokes all refresh sessions.",
+        "Validates the opaque resetToken from verify-password-reset-otp, updates the bcrypt password hash, marks the token used, and revokes all refresh sessions.",
       requestBody: {
         required: true,
         content: {

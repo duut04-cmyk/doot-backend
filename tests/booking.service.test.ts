@@ -11,6 +11,7 @@ import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
+import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 describe("BookingService", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -99,12 +100,12 @@ describe("BookingService", () => {
         pickup: {
           addressText: "Pickup",
           contactName: "A",
-          contactPhone: "+919876543210",
+          contactPhone: phoneValue("+91", "9876543210"),
         },
         drop: {
           addressText: "Drop",
           contactName: "B",
-          contactPhone: "+919811122233",
+          contactPhone: phoneValue("+91", "9811122233"),
         },
         package: {
           packageType: "FOOD",

@@ -24,7 +24,7 @@ describe("AuthService", () => {
       sendVerificationEmail: vi.fn(async (input) => {
         sentEmails.push(input);
       }),
-      sendPasswordResetEmail: vi.fn(async () => undefined),
+      sendPasswordResetOtpEmail: vi.fn(async () => undefined),
     };
     service = new AuthService(repository, mailer);
   });
@@ -34,7 +34,8 @@ describe("AuthService", () => {
       const result = await service.signup({
         name: "John Doe",
         email: "John@Example.com",
-        phone: "+919876543210",
+        phoneCountryCode: "+91",
+        phoneNumber: "9876543210",
         password: "StrongPassword123!",
       });
 

@@ -9,7 +9,9 @@ import type {
   GoogleLoginBody,
   RefreshSessionBody,
   ResendOtpBody,
+  ResendPasswordResetOtpBody,
   ResetPasswordBody,
+  VerifyPasswordResetOtpBody,
   SignupBody,
   VerifyOtpBody,
 } from "./auth.schema.js";
@@ -131,6 +133,34 @@ export class AuthController {
     try {
       const body = req.body as ForgotPasswordBody;
       const result = await this.service.forgotPassword(body);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  verifyPasswordResetOtp = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const body = req.body as VerifyPasswordResetOtpBody;
+      const result = await this.service.verifyPasswordResetOtp(body);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  resendPasswordResetOtp = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const body = req.body as ResendPasswordResetOtpBody;
+      const result = await this.service.resendPasswordResetOtp(body);
       res.status(200).json(result);
     } catch (error) {
       next(error);

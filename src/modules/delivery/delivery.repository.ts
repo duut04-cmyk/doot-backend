@@ -17,6 +17,7 @@ import type {
   StatusEventSource,
 } from "@prisma/client";
 import { getPrismaClient } from "../../config/database.js";
+import { toPhoneResponse } from "../../core/phone/phone.js";
 import { DELIVERY_REFERENCE_PREFIX } from "./delivery.constants.js";
 import type { DeliveryDetailDto, NormalizedCreateDelivery } from "./delivery.types.js";
 import { decimalToNumber } from "./delivery.types.js";
@@ -151,13 +152,19 @@ export function toDeliveryDetailDto(
     pickup: {
       addressText: delivery.pickup.addressText,
       contactName: delivery.pickup.contactName,
-      contactPhone: delivery.pickup.contactPhone,
+      contactPhone: toPhoneResponse(
+        delivery.pickup.contactPhoneCountryCode,
+        delivery.pickup.contactPhoneNumber,
+      )!,
       instructions: delivery.pickup.instructions,
     },
     drop: {
       addressText: delivery.drop.addressText,
       contactName: delivery.drop.contactName,
-      contactPhone: delivery.drop.contactPhone,
+      contactPhone: toPhoneResponse(
+        delivery.drop.contactPhoneCountryCode,
+        delivery.drop.contactPhoneNumber,
+      )!,
       instructions: delivery.drop.instructions,
     },
     package: {
@@ -238,7 +245,8 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
           create: {
             addressText: input.pickup.addressText,
             contactName: input.pickup.contactName,
-            contactPhone: input.pickup.contactPhone,
+            contactPhoneCountryCode: input.pickup.contactPhoneCountryCode,
+            contactPhoneNumber: input.pickup.contactPhoneNumber,
             instructions: input.pickup.instructions,
           },
         },
@@ -246,7 +254,8 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
           create: {
             addressText: input.drop.addressText,
             contactName: input.drop.contactName,
-            contactPhone: input.drop.contactPhone,
+            contactPhoneCountryCode: input.drop.contactPhoneCountryCode,
+            contactPhoneNumber: input.drop.contactPhoneNumber,
             instructions: input.drop.instructions,
           },
         },
@@ -282,7 +291,7 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
         compliance: {
           create: {
             accepted: true,
-            acceptedAt: input.complianceAcceptedAt,
+            acceptedAt: input.compliance.acceptedAt,
           },
         },
         requirements: {

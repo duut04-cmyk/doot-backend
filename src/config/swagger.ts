@@ -1,4 +1,8 @@
 import swaggerJsdoc from "swagger-jsdoc";
+import {
+  phoneInputSchema as phoneInputSwaggerSchema,
+  phoneResponseSchema,
+} from "../core/phone/phone.swagger.js";
 import { authSwaggerPaths, authSwaggerComponents } from "../modules/auth/auth.swagger.js";
 import {
   deliverySwaggerComponents,
@@ -90,6 +94,8 @@ export function buildOpenApiDocument() {
         },
       },
       schemas: {
+        PhoneInput: phoneInputSwaggerSchema,
+        PhoneResponse: phoneResponseSchema,
         ...authSwaggerComponents,
         ...deliverySwaggerComponents,
         ...providerSwaggerComponents,

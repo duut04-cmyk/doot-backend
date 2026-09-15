@@ -1,3 +1,8 @@
+import {
+  phoneInputSchema as phoneInputSwaggerSchema,
+  phoneResponseSchema,
+} from "../../core/phone/phone.swagger.js";
+
 const deliveryErrorSchema = {
   type: "object",
   properties: {
@@ -15,13 +20,24 @@ const deliveryErrorSchema = {
   required: ["success", "error", "requestId"],
 } as const;
 
-const locationSchema = {
+const locationInputSchema = {
   type: "object",
   required: ["addressText", "contactName", "contactPhone"],
   properties: {
     addressText: { type: "string", example: "12 MG Road, Bengaluru" },
     contactName: { type: "string", example: "Riya Sharma" },
-    contactPhone: { type: "string", example: "+919876543210" },
+    contactPhone: phoneInputSwaggerSchema,
+    instructions: { type: "string", nullable: true, example: "Gate 2" },
+  },
+} as const;
+
+const locationResponseSchema = {
+  type: "object",
+  required: ["addressText", "contactName", "contactPhone"],
+  properties: {
+    addressText: { type: "string", example: "12 MG Road, Bengaluru" },
+    contactName: { type: "string", example: "Riya Sharma" },
+    contactPhone: phoneResponseSchema,
     instructions: { type: "string", nullable: true, example: "Gate 2" },
   },
 } as const;
@@ -72,8 +88,8 @@ const deliveryDetailSchema = {
     id: { type: "string", format: "uuid" },
     reference: { type: "string", example: "DUTT-1000" },
     status: { type: "string", example: "CREATED" },
-    pickup: locationSchema,
-    drop: locationSchema,
+    pickup: locationResponseSchema,
+    drop: locationResponseSchema,
     package: {
       type: "object",
       properties: {
@@ -124,8 +140,8 @@ export const deliverySwaggerComponents = {
     type: "object",
     required: ["pickup", "drop", "package", "schedule", "compliance"],
     properties: {
-      pickup: locationSchema,
-      drop: locationSchema,
+      pickup: locationInputSchema,
+      drop: locationInputSchema,
       package: packageSchema,
       requirements: {
         type: "array",

@@ -506,7 +506,8 @@ export const providerSwaggerPaths = {
                   properties: {
                     addressText: { type: "string" },
                     contactName: { type: "string" },
-                    contactPhone: { type: "string" },
+                    contactPhoneCountryCode: { type: "string", example: "+91" },
+                    contactPhoneNumber: { type: "string", example: "9876543210" },
                   },
                 },
                 drop: {
@@ -514,7 +515,8 @@ export const providerSwaggerPaths = {
                   properties: {
                     addressText: { type: "string" },
                     contactName: { type: "string" },
-                    contactPhone: { type: "string" },
+                    contactPhoneCountryCode: { type: "string", example: "+91" },
+                    contactPhoneNumber: { type: "string", example: "9876543210" },
                   },
                 },
                 package: {

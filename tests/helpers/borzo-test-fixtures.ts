@@ -5,13 +5,15 @@ export const sampleQuoteRequest: QuoteRequest = {
   pickup: {
     addressText: "12 MG Road, Bengaluru",
     contactName: "Riya",
-    contactPhone: "+919876543210",
+    contactPhoneCountryCode: "+91",
+    contactPhoneNumber: "9876543210",
     instructions: "Gate 2",
   },
   drop: {
     addressText: "88 Indiranagar, Bengaluru",
     contactName: "Aman",
-    contactPhone: "+919811122233",
+    contactPhoneCountryCode: "+91",
+    contactPhoneNumber: "9811122233",
   },
   package: {
     packageType: "DOCUMENT",

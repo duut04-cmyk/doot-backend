@@ -7,6 +7,7 @@ import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { buildOpenApiDocument } from "./config/swagger.js";
+import { devRequestLoggerMiddleware } from "./core/middleware/dev-request-logger.js";
 import { errorHandlerMiddleware } from "./core/middleware/error-handler.js";
 import { notFoundMiddleware } from "./core/middleware/not-found.js";
 import { requestIdMiddleware } from "./core/middleware/request-id.js";
@@ -36,15 +37,20 @@ export function createApp(options?: {
   );
   app.use(cookieParser());
   app.use(requestIdMiddleware);
-  app.use(
-    pinoHttp({
-      logger,
-      customProps: (req) => ({
-        requestId: (req as Request).requestId,
+
+  if (env.NODE_ENV === "development") {
+    app.use(devRequestLoggerMiddleware);
+  } else if (env.NODE_ENV !== "test") {
+    app.use(
+      pinoHttp({
+        logger,
+        customProps: (req) => ({
+          requestId: (req as Request).requestId,
+        }),
+        autoLogging: true,
       }),
-      autoLogging: env.NODE_ENV !== "test",
-    }),
-  );
+    );
+  }
 
   const openApiDocument = buildOpenApiDocument();
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));

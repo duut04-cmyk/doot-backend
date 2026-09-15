@@ -6,6 +6,7 @@ import {
   toServiceabilityRequest,
 } from "../src/modules/provider/adapters/delivery-provider.mapper.js";
 import type { DeliveryDetailDto } from "../src/modules/delivery/delivery.types.js";
+import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 const delivery: DeliveryDetailDto = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -14,13 +15,13 @@ const delivery: DeliveryDetailDto = {
   pickup: {
     addressText: "12 MG Road",
     contactName: "Riya",
-    contactPhone: "+919876543210",
+    contactPhone: phoneValue("+91", "9876543210"),
     instructions: "Gate 2",
   },
   drop: {
     addressText: "88 Indiranagar",
     contactName: "Aman",
-    contactPhone: "+919811122233",
+    contactPhone: phoneValue("+91", "9811122233"),
     instructions: null,
   },
   package: {
@@ -56,6 +57,8 @@ describe("Delivery to provider mapper", () => {
     const request = toServiceabilityRequest(delivery);
     expect(request.deliveryId).toBe(delivery.id);
     expect(request.pickup.addressText).toBe("12 MG Road");
+    expect(request.pickup.contactPhoneCountryCode).toBe("+91");
+    expect(request.pickup.contactPhoneNumber).toBe("9876543210");
     expect(request.package.weightKg).toBe(1.5);
     expect(request.schedule.mode).toBe("ASAP");
     expect(request.requirements).toEqual(["HANDLE_WITH_CARE"]);

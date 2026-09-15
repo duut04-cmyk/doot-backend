@@ -372,12 +372,14 @@ export class MockProviderAdapter implements ProviderAdapter {
         pickup: {
           addressText: "A",
           contactName: "A",
-          contactPhone: "+911111111111",
+          contactPhoneCountryCode: "+91",
+          contactPhoneNumber: "1111111111",
         },
         drop: {
           addressText: "B",
           contactName: "B",
-          contactPhone: "+912222222222",
+          contactPhoneCountryCode: "+91",
+          contactPhoneNumber: "2222222222",
         },
         package: {
           packageType: "FOOD",
@@ -446,7 +448,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       driver = {
         providerDriverId: "MOCK-DRIVER-1",
         name: "Mock Driver",
-        phone: "+919900000001",
+        phone: { countryCode: "+91", number: "9900000001" },
         photoUrl: null,
         providerRating: 4.8,
         vehicleType: "BIKE",

@@ -10,6 +10,7 @@ import type { DeliveryRatingDto } from "../rating/rating.types.js";
 import type { TrackingPointDto } from "../tracking/tracking.repository.js";
 import type { ProviderBookingDto } from "../booking/booking.types.js";
 import type { DeliveryWithRelations } from "./delivery.repository.js";
+import { toPhoneResponse } from "../../core/phone/phone.js";
 import { decimalToNumber } from "./delivery.types.js";
 import type { DeliveryHistoryDetail, OtpHistoryMetadata } from "./delivery-history.types.js";
 import type { DeliveryStatusEvent } from "@prisma/client";
@@ -160,13 +161,19 @@ export function toDeliveryHistoryDetail(input: {
     pickup: {
       addressText: detail.pickup.addressText,
       contactName: detail.pickup.contactName,
-      contactPhone: detail.pickup.contactPhone,
+      contactPhone: toPhoneResponse(
+        detail.pickup.contactPhoneCountryCode,
+        detail.pickup.contactPhoneNumber,
+      )!,
       instructions: detail.pickup.instructions,
     },
     drop: {
       addressText: detail.drop.addressText,
       contactName: detail.drop.contactName,
-      contactPhone: detail.drop.contactPhone,
+      contactPhone: toPhoneResponse(
+        detail.drop.contactPhoneCountryCode,
+        detail.drop.contactPhoneNumber,
+      )!,
       instructions: detail.drop.instructions,
     },
     package: {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MockProviderAdapter } from "../src/modules/provider/adapters/mock/mock-provider.adapter.js";
 import type { ProviderRuntimeConfig } from "../src/modules/provider/adapters/provider-config.types.js";
+import { storedPhone } from "./helpers/phone-test-helpers.js";
 
 const ctx = (requestId = "mock-ctx-1") => ({
   requestId,
@@ -26,12 +27,12 @@ const baseRequest = {
   pickup: {
     addressText: "A",
     contactName: "A",
-    contactPhone: "+911111111111",
+    ...storedPhone("+91", "1111111111"),
   },
   drop: {
     addressText: "B",
     contactName: "B",
-    contactPhone: "+912222222222",
+    ...storedPhone("+91", "2222222222"),
   },
   package: {
     packageType: "FOOD" as const,

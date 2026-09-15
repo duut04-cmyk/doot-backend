@@ -5,12 +5,14 @@ import type {
   PackageType,
   ScheduleMode,
 } from "@prisma/client";
+import type { PhoneResponse } from "../../core/phone/phone.types.js";
 import { DIMENSIONS_REQUIRED_ABOVE_KG } from "./delivery.constants.js";
 
 export type DeliveryLocationInput = {
   addressText: string;
   contactName: string;
-  contactPhone: string;
+  contactPhoneCountryCode: string;
+  contactPhoneNumber: string;
   instructions?: string | null;
 };
 
@@ -53,7 +55,7 @@ export type CreateDeliveryInput = {
 export type DeliveryLocationDto = {
   addressText: string;
   contactName: string;
-  contactPhone: string;
+  contactPhone: PhoneResponse;
   instructions: string | null;
 };
 
@@ -149,13 +151,15 @@ export type NormalizedCreateDelivery = {
   pickup: {
     addressText: string;
     contactName: string;
-    contactPhone: string;
+    contactPhoneCountryCode: string;
+    contactPhoneNumber: string;
     instructions: string | null;
   };
   drop: {
     addressText: string;
     contactName: string;
-    contactPhone: string;
+    contactPhoneCountryCode: string;
+    contactPhoneNumber: string;
     instructions: string | null;
   };
   package: {
@@ -183,16 +187,22 @@ export type NormalizedCreateDelivery = {
     windowStart: Date | null;
     windowEnd: Date | null;
   };
-  complianceAcceptedAt: Date;
+  compliance: {
+    accepted: boolean;
+    acceptedAt: Date;
+  };
 };
 
 export function deriveSizeTier(weightKg: number): PackageSizeTier {
-  if (weightKg <= 1) return "SMALL";
-  if (weightKg <= DIMENSIONS_REQUIRED_ABOVE_KG) return "MEDIUM";
+  if (weightKg <= 2) {
+    return "SMALL";
+  }
+  if (weightKg <= DIMENSIONS_REQUIRED_ABOVE_KG) {
+    return "MEDIUM";
+  }
   return "LARGE";
 }
 
-export function decimalToNumber(value: { toString(): string } | number): number {
-  if (typeof value === "number") return value;
-  return Number(value.toString());
+export function decimalToNumber(value: { toNumber(): number } | number): number {
+  return typeof value === "number" ? value : value.toNumber();
 }

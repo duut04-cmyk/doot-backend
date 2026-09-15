@@ -27,7 +27,7 @@ describe("Borzo mapper", () => {
   });
 
   it("normalizes E.164 phone numbers for Borzo", () => {
-    expect(toBorzoPhone("+919876543210")).toBe("919876543210");
+    expect(toBorzoPhone("+91", "9876543210")).toBe("919876543210");
   });
 
   it("maps successful calculate-order response to normalized quote", () => {

@@ -13,6 +13,7 @@ import { OtpService } from "../src/modules/otp/otp.service.js";
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
+import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
@@ -113,7 +114,7 @@ describe("Phase 7 audit fixes", () => {
       providerId: seeded.providerId,
       providerDriverId: "DRV-1",
       driverName: "Alex",
-      driverPhone: "+919900000001",
+      ...storedDriverPhone("+91", "9900000001"),
       driverPhotoUrl: null,
       providerRating: 4.5,
       vehicleType: "BIKE",

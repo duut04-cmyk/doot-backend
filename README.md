@@ -100,6 +100,8 @@ POST /api/v1/auth/refresh
 POST /api/v1/auth/logout
 GET  /api/v1/auth/me
 POST /api/v1/auth/forgot-password
+POST /api/v1/auth/verify-password-reset-otp
+POST /api/v1/auth/resend-password-reset-otp
 POST /api/v1/auth/reset-password
 POST /api/v1/auth/google
 ```
@@ -107,8 +109,6 @@ POST /api/v1/auth/google
 Requires Resend configuration (`RESEND_API_KEY` and `RESEND_FROM_EMAIL` or `EMAIL_FROM`) to deliver verification and password-reset emails.
 
 Requires `JWT_ACCESS_SECRET` (min 32 characters) for login/session APIs.
-
-Requires `FRONTEND_URL` for password-reset email links (`${FRONTEND_URL}/reset-password?token=...`).
 
 Requires `GOOGLE_CLIENT_ID` for Google ID-token verification (`POST /api/v1/auth/google`).
 
@@ -138,9 +138,13 @@ curl -X POST http://localhost:5000/api/v1/auth/forgot-password \
   -H "Content-Type: application/json" \
   -d '{"email":"john@example.com"}'
 
+curl -X POST http://localhost:5000/api/v1/auth/verify-password-reset-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@example.com","otp":"123456"}'
+
 curl -X POST http://localhost:5000/api/v1/auth/reset-password \
   -H "Content-Type: application/json" \
-  -d '{"token":"<RESET_TOKEN>","password":"NewStrongPassword123!","confirmPassword":"NewStrongPassword123!"}'
+  -d '{"resetToken":"<RESET_TOKEN>","newPassword":"NewStrongPassword123!"}'
 ```
 
 ### Google authentication

@@ -6,6 +6,7 @@ import {
   BORZO_MATTER_BY_PACKAGE_TYPE,
   BORZO_ORDER_TYPE_STANDARD,
 } from "./borzo.constants.js";
+import { toE164 } from "../../../../core/phone/phone.js";
 import type {
   BorzoCalculateOrderRequest,
   BorzoCalculateOrderResponse,
@@ -20,8 +21,8 @@ export type BorzoProbeQuoteResult = {
   providerMetadata: BorzoProviderMetadata;
 };
 
-export function toBorzoPhone(e164Phone: string): string {
-  return e164Phone.replace(/\D/g, "");
+export function toBorzoPhone(countryCode: string, number: string): string {
+  return toE164(countryCode, number).replace(/\D/g, "");
 }
 
 export function mapPackageTypeToMatter(request: QuoteRequest): string {
@@ -44,7 +45,10 @@ export function mapQuoteRequestToBorzoCalculateOrder(
   const pickupPoint = {
     address: request.pickup.addressText,
     contact_person: {
-      phone: toBorzoPhone(request.pickup.contactPhone),
+      phone: toBorzoPhone(
+        request.pickup.contactPhoneCountryCode,
+        request.pickup.contactPhoneNumber,
+      ),
       name: request.pickup.contactName,
     },
     ...(request.pickup.instructions
@@ -61,7 +65,10 @@ export function mapQuoteRequestToBorzoCalculateOrder(
   const dropPoint = {
     address: request.drop.addressText,
     contact_person: {
-      phone: toBorzoPhone(request.drop.contactPhone),
+      phone: toBorzoPhone(
+        request.drop.contactPhoneCountryCode,
+        request.drop.contactPhoneNumber,
+      ),
       name: request.drop.contactName,
     },
     ...(request.drop.instructions ? { note: request.drop.instructions } : {}),

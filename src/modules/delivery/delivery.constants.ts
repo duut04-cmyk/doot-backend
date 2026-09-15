@@ -19,9 +19,6 @@ export const DEFAULT_LIST_PAGE = 1;
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 100;
 
-/** E.164: + and 8–15 digits total after country code rules (ITU E.164 max 15). */
-export const E164_PHONE_REGEX = /^\+[1-9]\d{7,14}$/;
-
 /**
  * Durable object storage key (not a browser blob URL or absolute http(s) URL).
  * Example: deliveries/uuid/photos/front.jpg

@@ -11,23 +11,27 @@ import {
 } from "../../infrastructure/email/email.service.js";
 import type { User } from "@prisma/client";
 import {
+  OTP_EXPIRY_SECONDS,
+  OTP_GENERATION_COOLDOWN_SECONDS,
+  OTP_MAX_ATTEMPTS,
+} from "../../config/env.js";
+import {
   EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
   MAX_OTP_ATTEMPTS,
   OTP_RESEND_COOLDOWN_SECONDS,
 } from "./auth.constants.js";
 import {
-  buildPasswordResetTokenExpiry,
-  buildPasswordResetUrl,
+  buildPasswordResetVerificationTokenExpiry,
   buildRefreshTokenExpiry,
   emailDomain,
   generateAccessToken,
   generateEmailVerificationOtp,
-  generatePasswordResetToken,
+  generatePasswordResetVerificationToken,
   generateRefreshToken,
   getAccessTokenExpiresInSeconds,
+  hashOpaqueToken,
   hashOtp,
   hashPassword,
-  hashPasswordResetToken,
   hashRefreshToken,
   normalizeEmail,
   verifyOtpHash,
@@ -38,6 +42,7 @@ import {
   isUniqueConstraintError,
   type IAuthRepository,
 } from "./auth.repository.js";
+import { passwordSchema } from "./auth.schema.js";
 import type {
   AuthMessageResult,
   ForgotPasswordInput,
@@ -46,21 +51,25 @@ import type {
   LoginResult,
   LogoutInput,
   MeResult,
+  PasswordResetVerifyResult,
   RefreshResult,
   RefreshSessionInput,
   ResendOtpInput,
+  ResendPasswordResetOtpInput,
   ResetPasswordInput,
   SignupInput,
   VerifyOtpInput,
+  VerifyPasswordResetOtpInput,
 } from "./auth.types.js";
 import { toAuthenticatedUser, toPublicUserProfile } from "./auth.types.js";
 
 const GENERIC_OTP_ERROR = "Invalid or expired verification code";
 const GENERIC_CREDENTIALS_ERROR = "Invalid email or password.";
 const GENERIC_REFRESH_ERROR = "Invalid or expired refresh token.";
+const GENERIC_PASSWORD_RESET_OTP_ERROR = "Invalid or expired verification code";
 const GENERIC_RESET_TOKEN_ERROR = "Invalid or expired password reset token.";
 const GENERIC_FORGOT_PASSWORD_MESSAGE =
-  "If an account exists for this email, a password reset link has been sent.";
+  "If an account exists for this email, a verification code has been sent.";
 
 export class AuthService {
   constructor(
@@ -72,7 +81,8 @@ export class AuthService {
   async signup(input: SignupInput): Promise<AuthMessageResult> {
     const email = normalizeEmail(input.email);
     const name = input.name.trim();
-    const phone = input.phone?.trim() || null;
+    const phoneCountryCode = input.phoneCountryCode?.trim() || null;
+    const phoneNumber = input.phoneNumber?.trim() || null;
 
     logger.info({ emailDomain: emailDomain(email) }, "signup requested");
 
@@ -99,7 +109,8 @@ export class AuthService {
           existing.id,
           {
             name,
-            phone,
+            phoneCountryCode,
+            phoneNumber,
             passwordHash,
           },
           tx,
@@ -119,7 +130,8 @@ export class AuthService {
           {
             name,
             email,
-            phone,
+            phoneCountryCode,
+            phoneNumber,
             passwordHash,
           },
           tx,
@@ -552,31 +564,93 @@ export class AuthService {
     };
 
     const user = await this.repository.findUserByEmail(email);
-    if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+    if (!this.isPasswordResetEligible(user)) {
       return genericSuccess;
     }
 
-    const rawToken = generatePasswordResetToken();
-    const tokenHash = hashPasswordResetToken(rawToken);
-    const expiresAt = buildPasswordResetTokenExpiry();
+    await this.issuePasswordResetOtp(user, email);
+    return genericSuccess;
+  }
 
-    let resetUrl: string;
-    try {
-      resetUrl = buildPasswordResetUrl(rawToken);
-    } catch {
-      logger.error(
-        { userId: user.id, emailDomain: emailDomain(email) },
-        "password_reset_failed",
+  async verifyPasswordResetOtp(
+    input: VerifyPasswordResetOtpInput,
+  ): Promise<PasswordResetVerifyResult> {
+    const email = normalizeEmail(input.email);
+    const otp = input.otp.trim();
+
+    const user = await this.repository.findUserByEmail(email);
+    if (!this.isPasswordResetEligible(user)) {
+      logger.info(
+        { emailDomain: emailDomain(email) },
+        "password_reset_otp_failed",
       );
-      throw new AppError("Unable to send password reset email at this time", {
-        statusCode: 503,
-        code: ErrorCodes.EMAIL_DELIVERY_FAILED,
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_INVALID,
       });
     }
 
-    await this.repository.withTransaction(async (tx) => {
-      await this.repository.invalidatePasswordResetTokens(user.id, tx);
-      await this.repository.createPasswordResetToken(
+    const record = await this.repository.findLatestPasswordResetOtp(user.id);
+    if (!record || record.consumedAt) {
+      logger.info({ userId: user.id }, "password_reset_otp_failed");
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_INVALID,
+      });
+    }
+
+    if (record.expiresAt.getTime() <= Date.now()) {
+      logger.info({ userId: user.id }, "password_reset_otp_failed");
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_EXPIRED,
+      });
+    }
+
+    if (record.attempts >= record.maxAttempts) {
+      logger.info({ userId: user.id }, "password_reset_otp_failed");
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_MAX_ATTEMPTS,
+      });
+    }
+
+    const matches = await verifyOtpHash(otp, record.codeHash);
+    if (!matches) {
+      const updated = await this.repository.incrementPasswordResetOtpAttempts(
+        record.id,
+        record.maxAttempts,
+      );
+      logger.info({ userId: user.id }, "password_reset_otp_failed");
+      if (!updated || updated.attempts >= updated.maxAttempts) {
+        throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+          statusCode: 400,
+          code: ErrorCodes.PASSWORD_RESET_OTP_MAX_ATTEMPTS,
+        });
+      }
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_INVALID,
+      });
+    }
+
+    const rawResetToken = generatePasswordResetVerificationToken();
+    const tokenHash = hashOpaqueToken(rawResetToken);
+    const expiresAt = buildPasswordResetVerificationTokenExpiry();
+
+    const consumed = await this.repository.withTransaction(async (tx) => {
+      const claimed = await this.repository.consumePasswordResetOtp(
+        record.id,
+        tx,
+      );
+      if (!claimed) {
+        return null;
+      }
+      await this.repository.invalidatePasswordResetVerificationTokens(
+        user.id,
+        tx,
+      );
+      await this.repository.createPasswordResetVerificationToken(
         {
           userId: user.id,
           tokenHash,
@@ -584,59 +658,166 @@ export class AuthService {
         },
         tx,
       );
+      return claimed;
     });
 
-    await this.mailer.sendPasswordResetEmail({
-      to: email,
-      recipientName: user.name,
-      resetUrl,
-    });
+    if (!consumed) {
+      logger.info({ userId: user.id }, "password_reset_otp_failed");
+      throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_OTP_INVALID,
+      });
+    }
 
-    logger.info({ userId: user.id }, "password_reset_email_sent");
+    logger.info({ userId: user.id }, "password_reset_otp_verified");
+
+    return {
+      success: true,
+      data: {
+        resetToken: rawResetToken,
+        expiresAt: expiresAt.toISOString(),
+      },
+    };
+  }
+
+  async resendPasswordResetOtp(
+    input: ResendPasswordResetOtpInput,
+  ): Promise<AuthMessageResult> {
+    const email = normalizeEmail(input.email);
+    logger.info(
+      { emailDomain: emailDomain(email) },
+      "password_reset_otp_resend_requested",
+    );
+
+    const genericSuccess: AuthMessageResult = {
+      success: true,
+      message: GENERIC_FORGOT_PASSWORD_MESSAGE,
+    };
+
+    const user = await this.repository.findUserByEmail(email);
+    if (!this.isPasswordResetEligible(user)) {
+      return genericSuccess;
+    }
+
+    const latest = await this.repository.findLatestPasswordResetOtp(user.id);
+    if (latest) {
+      const elapsedMs = Date.now() - latest.createdAt.getTime();
+      if (elapsedMs < OTP_GENERATION_COOLDOWN_SECONDS * 1000) {
+        throw new AppError(
+          "Please wait before requesting another verification code",
+          {
+            statusCode: 429,
+            code: ErrorCodes.PASSWORD_RESET_OTP_COOLDOWN,
+          },
+        );
+      }
+    }
+
+    await this.issuePasswordResetOtp(user, email);
     return genericSuccess;
   }
 
   async resetPassword(input: ResetPasswordInput): Promise<AuthMessageResult> {
-    const rawToken = input.token.trim();
-    const tokenHash = hashPasswordResetToken(rawToken);
-    const record = await this.repository.findPasswordResetTokenByHash(tokenHash);
+    const passwordResult = passwordSchema.safeParse(input.newPassword);
+    if (!passwordResult.success) {
+      throw new AppError(
+        passwordResult.error.issues[0]?.message ?? "Invalid password",
+        {
+          statusCode: 400,
+          code: ErrorCodes.VALIDATION_ERROR,
+        },
+      );
+    }
 
-    if (
-      !record ||
-      record.usedAt ||
-      record.expiresAt.getTime() <= Date.now()
-    ) {
+    const rawToken = input.resetToken.trim();
+    const tokenHash = hashOpaqueToken(rawToken);
+    const record =
+      await this.repository.findPasswordResetVerificationTokenByHash(tokenHash);
+
+    if (!record) {
       logger.info("password_reset_failed");
       throw new AppError(GENERIC_RESET_TOKEN_ERROR, {
         statusCode: 400,
-        code: ErrorCodes.INVALID_PASSWORD_RESET_TOKEN,
+        code: ErrorCodes.PASSWORD_RESET_TOKEN_INVALID,
+      });
+    }
+
+    if (record.usedAt) {
+      logger.info({ userId: record.userId }, "password_reset_failed");
+      throw new AppError(GENERIC_RESET_TOKEN_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_TOKEN_USED,
+      });
+    }
+
+    if (record.expiresAt.getTime() <= Date.now()) {
+      logger.info({ userId: record.userId }, "password_reset_failed");
+      throw new AppError(GENERIC_RESET_TOKEN_ERROR, {
+        statusCode: 400,
+        code: ErrorCodes.PASSWORD_RESET_TOKEN_EXPIRED,
       });
     }
 
     const user = await this.repository.findUserById(record.userId);
-    if (!user || user.status === "DELETED") {
+    if (!user || user.status === "DELETED" || user.status === "SUSPENDED") {
       logger.info({ userId: record.userId }, "password_reset_failed");
       throw new AppError(GENERIC_RESET_TOKEN_ERROR, {
         statusCode: 400,
-        code: ErrorCodes.INVALID_PASSWORD_RESET_TOKEN,
+        code: ErrorCodes.PASSWORD_RESET_TOKEN_INVALID,
       });
     }
 
-    if (user.status === "SUSPENDED") {
-      logger.info({ userId: user.id }, "password_reset_failed");
+    if (user.passwordHash) {
+      const sameAsCurrent = await verifyPassword(
+        input.newPassword,
+        user.passwordHash,
+      );
+      if (sameAsCurrent) {
+        throw new AppError(
+          "New password must be different from your current password.",
+          {
+            statusCode: 400,
+            code: ErrorCodes.PASSWORD_SAME_AS_CURRENT,
+          },
+        );
+      }
+    }
+
+    const passwordHash = await hashPassword(input.newPassword);
+
+    const marked = await this.repository.withTransaction(async (tx) => {
+      const current =
+        await this.repository.findPasswordResetVerificationTokenByHash(
+          tokenHash,
+          tx,
+        );
+      if (
+        !current ||
+        current.usedAt ||
+        current.expiresAt.getTime() <= Date.now()
+      ) {
+        return null;
+      }
+
+      await this.repository.updateUserPassword(user.id, passwordHash, tx);
+      const used = await this.repository.markPasswordResetVerificationTokenUsed(
+        current.id,
+        tx,
+      );
+      if (!used) {
+        return null;
+      }
+      await this.repository.revokeAllRefreshTokens(user.id, tx);
+      return used;
+    });
+
+    if (!marked) {
+      logger.info({ userId: record.userId }, "password_reset_failed");
       throw new AppError(GENERIC_RESET_TOKEN_ERROR, {
         statusCode: 400,
-        code: ErrorCodes.INVALID_PASSWORD_RESET_TOKEN,
+        code: ErrorCodes.PASSWORD_RESET_TOKEN_USED,
       });
     }
-
-    const passwordHash = await hashPassword(input.password);
-
-    await this.repository.withTransaction(async (tx) => {
-      await this.repository.updateUserPassword(user.id, passwordHash, tx);
-      await this.repository.markPasswordResetTokenUsed(record.id, tx);
-      await this.repository.revokeAllRefreshTokens(user.id, tx);
-    });
 
     logger.info({ userId: user.id }, "password_reset_completed");
 
@@ -703,6 +884,47 @@ export class AuthService {
     return new Date(
       from.getTime() + EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES * 60 * 1000,
     );
+  }
+
+  private buildPasswordResetOtpExpiry(from: Date = new Date()): Date {
+    return new Date(from.getTime() + OTP_EXPIRY_SECONDS * 1000);
+  }
+
+  private isPasswordResetEligible(
+    user: User | null,
+  ): user is User & { passwordHash: string } {
+    return !!(
+      user &&
+      user.passwordHash &&
+      user.status === "ACTIVE"
+    );
+  }
+
+  private async issuePasswordResetOtp(user: User, email: string): Promise<void> {
+    const otp = generateEmailVerificationOtp();
+    const codeHash = await hashOtp(otp);
+    const expiresAt = this.buildPasswordResetOtpExpiry();
+
+    await this.repository.withTransaction(async (tx) => {
+      await this.repository.invalidatePasswordResetOtps(user.id, tx);
+      await this.repository.createPasswordResetOtp(
+        {
+          userId: user.id,
+          codeHash,
+          expiresAt,
+          maxAttempts: OTP_MAX_ATTEMPTS,
+        },
+        tx,
+      );
+    });
+
+    await this.mailer.sendPasswordResetOtpEmail({
+      to: email,
+      recipientName: user.name,
+      otp,
+    });
+
+    logger.info({ userId: user.id }, "password_reset_otp_email_sent");
   }
 }
 

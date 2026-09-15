@@ -12,7 +12,9 @@ import {
   logoutSchema,
   refreshSessionSchema,
   resendOtpSchema,
+  resendPasswordResetOtpSchema,
   resetPasswordSchema,
+  verifyPasswordResetOtpSchema,
   signupSchema,
   verifyOtpSchema,
 } from "./auth.schema.js";
@@ -63,6 +65,18 @@ export function createAuthRouter(
     "/forgot-password",
     validateRequest({ body: forgotPasswordSchema }),
     controller.forgotPassword,
+  );
+
+  router.post(
+    "/verify-password-reset-otp",
+    validateRequest({ body: verifyPasswordResetOtpSchema }),
+    controller.verifyPasswordResetOtp,
+  );
+
+  router.post(
+    "/resend-password-reset-otp",
+    validateRequest({ body: resendPasswordResetOtpSchema }),
+    controller.resendPasswordResetOtp,
   );
 
   router.post(

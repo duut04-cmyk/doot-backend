@@ -92,7 +92,8 @@ model User {
   id            String     @id @default(uuid()) @db.Uuid
   name          String
   email         String     @unique
-  phone         String?
+  phoneCountryCode String?
+  phoneNumber      String?
   passwordHash  String?
   emailVerified Boolean    @default(false)
   status        UserStatus @default(ACTIVE)
@@ -101,9 +102,10 @@ model User {
   updatedAt     DateTime   @updatedAt
 
   oauthAccounts         OAuthAccount[]
-  emailVerificationOtps EmailVerificationOtp[]
-  passwordResetTokens   PasswordResetToken[]
-  refreshTokens         RefreshToken[]
+  emailVerificationOtps            EmailVerificationOtp[]
+  passwordResetOtps                PasswordResetOtp[]
+  passwordResetVerificationTokens  PasswordResetVerificationToken[]
+  refreshTokens                    RefreshToken[]
   deliveries            Delivery[]
   deliveryRatings       DeliveryRating[]
   deliveryFeedbacks     DeliveryFeedback[]
@@ -140,7 +142,24 @@ model EmailVerificationOtp {
   @@index([expiresAt])
 }
 
-model PasswordResetToken {
+model PasswordResetOtp {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([consumedAt])
+}
+
+model PasswordResetVerificationToken {
   id        String    @id @default(uuid()) @db.Uuid
   userId    String    @db.Uuid
   tokenHash String
@@ -214,8 +233,9 @@ model DeliveryPickup {
   deliveryId   String  @unique @db.Uuid
   addressText  String
   contactName  String
-  contactPhone String
-  instructions String?
+  contactPhoneCountryCode String
+  contactPhoneNumber      String
+  instructions            String?
 
   delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
 }
@@ -225,7 +245,8 @@ model DeliveryDrop {
   deliveryId   String  @unique @db.Uuid
   addressText  String
   contactName  String
-  contactPhone String
+  contactPhoneCountryCode String
+  contactPhoneNumber      String
   instructions String?
 
   delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
@@ -811,7 +832,8 @@ model DriverAssignment {
   providerId        String                 @db.Uuid
   providerDriverId  String?
   driverName        String?
-  driverPhone       String?
+  driverPhoneCountryCode String?
+  driverPhoneNumber      String?
   driverPhotoUrl    String?
   providerRating    Decimal?               @db.Decimal(4, 2)
   vehicleType       String?

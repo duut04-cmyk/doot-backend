@@ -1,4 +1,5 @@
 import type { FeedbackIssueTag, FeedbackPositiveTag } from "@prisma/client";
+import type { PhoneResponse } from "../../core/phone/phone.types.js";
 
 export type DeliveryHistoryDetail = {
   delivery: {
@@ -12,13 +13,13 @@ export type DeliveryHistoryDetail = {
   pickup: {
     addressText: string;
     contactName: string;
-    contactPhone: string;
+    contactPhone: PhoneResponse;
     instructions: string | null;
   };
   drop: {
     addressText: string;
     contactName: string;
-    contactPhone: string;
+    contactPhone: PhoneResponse;
     instructions: string | null;
   };
   package: {

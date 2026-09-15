@@ -2,6 +2,7 @@ import type {
   DriverAssignmentStatus,
   OperationalDataSource,
 } from "@prisma/client";
+import type { PhoneResponse } from "../../core/phone/phone.types.js";
 import type { NormalizedDriver } from "../provider/contracts/common.js";
 
 export type DriverAssignmentDto = {
@@ -11,7 +12,8 @@ export type DriverAssignmentDto = {
   providerId: string;
   providerDriverId: string | null;
   driverName: string | null;
-  driverPhone: string | null;
+  driverPhoneCountryCode: string | null;
+  driverPhoneNumber: string | null;
   driverPhotoUrl: string | null;
   providerRating: number | null;
   vehicleType: string | null;
@@ -30,7 +32,7 @@ export type CustomerDriverResponse = {
   assigned?: boolean;
   driver?: {
     name: string | null;
-    phone: string | null;
+    phone: PhoneResponse | null;
     photoUrl: string | null;
     vehicleType: string | null;
     vehicleNumber: string | null;

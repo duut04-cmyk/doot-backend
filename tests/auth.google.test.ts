@@ -22,7 +22,7 @@ describe("Auth Part 4 Google login", () => {
     repository = new InMemoryAuthRepository();
     mailer = {
       sendVerificationEmail: vi.fn(async () => undefined),
-      sendPasswordResetEmail: vi.fn(async () => undefined),
+      sendPasswordResetOtpEmail: vi.fn(async () => undefined),
     };
     googleVerifier = {
       verifyIdToken: vi.fn(),

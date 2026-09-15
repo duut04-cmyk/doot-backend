@@ -11,13 +11,15 @@ function mapDeliveryCore(delivery: DeliveryDetailDto) {
     pickup: {
       addressText: delivery.pickup.addressText,
       contactName: delivery.pickup.contactName,
-      contactPhone: delivery.pickup.contactPhone,
+      contactPhoneCountryCode: delivery.pickup.contactPhone.countryCode,
+      contactPhoneNumber: delivery.pickup.contactPhone.number,
       instructions: delivery.pickup.instructions,
     },
     drop: {
       addressText: delivery.drop.addressText,
       contactName: delivery.drop.contactName,
-      contactPhone: delivery.drop.contactPhone,
+      contactPhoneCountryCode: delivery.drop.contactPhone.countryCode,
+      contactPhoneNumber: delivery.drop.contactPhone.number,
       instructions: delivery.drop.instructions,
     },
     package: {
