@@ -1,0 +1,77 @@
+export const PROVIDER_CODE_REGEX = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+export const MAX_PROVIDER_NAME_LENGTH = 100;
+export const MAX_PROVIDER_DISPLAY_NAME_LENGTH = 100;
+export const MAX_PROVIDER_DESCRIPTION_LENGTH = 500;
+export const MAX_SERVICE_CODE_LENGTH = 64;
+export const MAX_SERVICE_NAME_LENGTH = 100;
+
+export const MIN_PRIORITY = 0;
+export const MAX_PRIORITY = 1000;
+
+export const MIN_TIMEOUT_MS = 1000;
+export const MAX_TIMEOUT_MS = 120_000;
+export const MIN_CONNECT_TIMEOUT_MS = 500;
+export const MAX_CONNECT_TIMEOUT_MS = 60_000;
+export const MAX_RETRIES = 10;
+export const MAX_RETRY_DELAY_MS = 60_000;
+export const MIN_HEALTH_CHECK_INTERVAL_MS = 60_000;
+export const MAX_HEALTH_CHECK_INTERVAL_MS = 3_600_000;
+
+export const MAX_WEIGHT_KG = 10_000;
+export const MAX_DIMENSION_CM = 10_000;
+export const MAX_VOLUME_CM3 = 1_000_000_000;
+
+export const PROVIDER_CAPABILITY_VALUES = [
+  "SERVICEABILITY",
+  "AVAILABILITY",
+  "PRICING",
+  "BOOKING",
+  "DRIVER_INFO",
+  "DRIVER_RATING",
+  "VEHICLE_INFO",
+  "LIVE_TRACKING",
+  "TRACKING_URL",
+  "WEBHOOKS",
+  "OTP",
+  "CANCELLATION",
+] as const;
+
+export const PROVIDER_CREDENTIAL_FIELD_VALUES = [
+  "API_KEY",
+  "API_SECRET",
+  "ACCESS_TOKEN",
+  "CLIENT_ID",
+  "CLIENT_SECRET",
+  "USERNAME",
+  "PASSWORD",
+  "ACCOUNT_ID",
+  "WEBHOOK_SECRET",
+] as const;
+
+export const PROVIDER_SERVICE_TYPE_VALUES = [
+  "BIKE",
+  "SCOOTER",
+  "CAR",
+  "VAN",
+  "TRUCK",
+  "HYPERLOCAL",
+  "SAME_DAY",
+  "EXPRESS",
+  "SCHEDULED",
+] as const;
+
+export const PROVIDER_VEHICLE_TYPE_VALUES = [
+  "BIKE",
+  "SCOOTER",
+  "CAR",
+  "VAN",
+  "TRUCK",
+] as const;
+
+export const PACKAGE_TYPE_VALUES = [
+  "MEDICINE",
+  "FOOD",
+  "DOCUMENT",
+  "OTHER",
+] as const;

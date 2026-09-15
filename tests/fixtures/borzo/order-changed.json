@@ -1,0 +1,17 @@
+{
+  "event_datetime": "2026-09-14T13:10:00+05:30",
+  "event_type": "order_changed",
+  "order": {
+    "order_id": 1250032,
+    "type": "standard",
+    "order_name": "50032",
+    "vehicle_type_id": 8,
+    "created_datetime": "2026-09-14T12:57:09+05:30",
+    "finish_datetime": null,
+    "status": "active",
+    "status_description": "active",
+    "matter": "Documents",
+    "total_weight_kg": 0,
+    "points": []
+  }
+}

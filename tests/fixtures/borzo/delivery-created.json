@@ -1,0 +1,27 @@
+{
+  "event_datetime": "2026-09-14T12:58:00+05:30",
+  "event_type": "delivery_created",
+  "delivery": {
+    "delivery_id": 11712,
+    "delivery_type": "plain",
+    "order_id": 1250032,
+    "client_id": 180198,
+    "client_order_id": null,
+    "address": "Janakpuri, New Delhi, Delhi",
+    "latitude": null,
+    "longitude": null,
+    "status": "planned",
+    "status_description": "planned",
+    "status_datetime": "2026-09-14T12:58:00+05:30",
+    "created_datetime": "2026-09-14T12:58:00+05:30",
+    "order_name": "50032",
+    "order_payment_amount": "170.00",
+    "delivery_price_amount": "170.00",
+    "point_id": 203902,
+    "contact_person": {
+      "phone": "918880000002",
+      "name": "Test Recipient"
+    },
+    "tracking_url": null
+  }
+}

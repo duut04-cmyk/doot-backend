@@ -1,0 +1,5 @@
+export const MOCK_PROVIDER_CODE = "MOCK";
+export const MOCK_ADAPTER_VERSION = "1.0.0";
+export const MOCK_BOOKING_ID = "MOCK-BOOKING-1001";
+export const MOCK_QUOTE_ID = "MOCK-QUOTE-9001";
+export const MOCK_CANCELLATION_ID = "MOCK-CANCEL-7001";
