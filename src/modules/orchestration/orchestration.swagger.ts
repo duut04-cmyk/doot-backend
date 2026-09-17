@@ -15,6 +15,34 @@ const deliveryErrorSchema = {
   required: ["success", "error", "requestId"],
 } as const;
 
+const cancellationFeeSchema = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["NONE", "FIXED", "PERCENTAGE", "VARIABLE", "UNKNOWN"],
+    },
+    amount: { type: "number", nullable: true },
+    currency: { type: "string", nullable: true },
+  },
+} as const;
+
+const cancellationPolicySchema = {
+  type: "object",
+  properties: {
+    supported: { type: "boolean" },
+    allowedBeforePickup: { type: "boolean" },
+    allowedAfterPickup: { type: "boolean" },
+    fee: cancellationFeeSchema,
+    conditions: { type: "array", items: { type: "string" } },
+    policyKnown: { type: "boolean" },
+    source: {
+      type: "string",
+      enum: ["PROVIDER", "DUTT_CONFIG", "UNKNOWN"],
+    },
+  },
+} as const;
+
 const selectedOptionSchema = {
   type: "object",
   properties: {
@@ -42,6 +70,7 @@ const selectedOptionSchema = {
       },
     },
     selectionReason: { type: "string" },
+    cancellationPolicy: cancellationPolicySchema,
   },
 } as const;
 

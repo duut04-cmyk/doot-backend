@@ -21,6 +21,7 @@ describe("Auth Part 2 sessions", () => {
   let mailer: {
     sendVerificationEmail: ReturnType<typeof vi.fn>;
     sendPasswordResetOtpEmail: ReturnType<typeof vi.fn>;
+    sendPickupOtpEmail: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -28,6 +29,8 @@ describe("Auth Part 2 sessions", () => {
     mailer = { 
       sendVerificationEmail: vi.fn(async () => undefined),
       sendPasswordResetOtpEmail: vi.fn(async () => undefined),
+      sendPickupOtpEmail: vi.fn(async () => undefined),
+      sendDeliveryOtpEmail: vi.fn(async () => undefined),
     };
     service = new AuthService(repository, mailer);
   });

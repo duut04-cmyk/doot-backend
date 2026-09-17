@@ -1,10 +1,24 @@
 import type { UserRole } from "@prisma/client";
+import type { CancellationPolicy } from "../provider/contracts/cancellation-policy.js";
 import type {
   AdminOrchestrationResultDto,
   CustomerOrchestrationResultDto,
   CustomerSelectedOptionDto,
   OrchestrationRequestDto,
 } from "./orchestration.types.js";
+
+function mapCancellationPolicy(
+  snapshot: unknown,
+): CancellationPolicy | null {
+  if (!snapshot || typeof snapshot !== "object") {
+    return null;
+  }
+  const policy = snapshot as CancellationPolicy;
+  if (typeof policy.policyKnown !== "boolean") {
+    return null;
+  }
+  return policy;
+}
 
 function mapSelectedOption(
   request: OrchestrationRequestDto,
@@ -25,6 +39,16 @@ function mapSelectedOption(
     reason?: string | null;
   } | null;
   const eta = option.etaSnapshot as { estimatedDeliveryAt?: string | null } | null;
+  const cancellationPolicy =
+    mapCancellationPolicy(option.cancellationPolicySnapshot) ?? {
+      supported: false,
+      allowedBeforePickup: false,
+      allowedAfterPickup: false,
+      fee: { type: "UNKNOWN" as const },
+      conditions: [],
+      policyKnown: false,
+      source: "UNKNOWN" as const,
+    };
 
   return {
     providerCode: option.providerCode,
@@ -47,7 +71,17 @@ function mapSelectedOption(
         }
       : { known: false },
     selectionReason: option.selectionReason,
+    cancellationPolicy,
   };
+}
+
+function extractEvaluationCancellationPolicy(
+  evaluation: OrchestrationRequestDto["evaluations"][number],
+): CancellationPolicy | null {
+  const normalized = evaluation.normalizedResult as {
+    cancellationPolicy?: CancellationPolicy;
+  } | null;
+  return normalized?.cancellationPolicy ?? null;
 }
 
 export function toCustomerOrchestrationResult(
@@ -102,6 +136,7 @@ export function toAdminOrchestrationResult(
         score: evaluation.score,
         scoreBreakdown: evaluation.scoreBreakdown,
         errorCategory: evaluation.errorCategory,
+        cancellationPolicy: extractEvaluationCancellationPolicy(evaluation),
       })),
     },
   };

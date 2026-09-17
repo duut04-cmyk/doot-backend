@@ -68,10 +68,13 @@ export const operationalSwaggerPaths = {
     post: {
       tags: ["Deliveries"],
       summary: "Generate pickup OTP",
+      description:
+        "Generates a pickup verification code, emails it to the delivery owner, and moves eligible deliveries to PICKUP_OTP_PENDING. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
-        200: { description: "Pickup OTP generated" },
+        200: { description: "Pickup OTP generated and emailed to the customer" },
+        503: { description: "Pickup OTP email delivery failed" },
         422: { description: "OTP not allowed for current status" },
         429: { description: "OTP generation cooldown" },
       },
@@ -105,10 +108,15 @@ export const operationalSwaggerPaths = {
     post: {
       tags: ["Deliveries"],
       summary: "Generate delivery OTP",
+      description:
+        "Generates a delivery verification code, emails it to the delivery owner, and moves eligible deliveries to DELIVERY_OTP_PENDING. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
-        200: { description: "Delivery OTP generated" },
+        200: { description: "Delivery OTP generated and emailed to the customer" },
+        503: { description: "Delivery OTP email delivery failed" },
+        422: { description: "OTP not allowed for current status" },
+        429: { description: "OTP generation cooldown" },
       },
     },
   },
@@ -214,6 +222,106 @@ export const operationalSwaggerPaths = {
       parameters: [deliveryIdParam],
       responses: {
         200: { description: "Tracking refreshed from provider poll" },
+      },
+    },
+  },
+} as const;
+
+const simulateDriverRequestExample = {
+  status: "ASSIGNED",
+  providerDriverId: "MOCK-DRIVER-001",
+  driverName: "Aman Singh",
+  driverPhoneCountryCode: "+91",
+  driverPhoneNumber: "9876543210",
+  driverPhotoUrl: null,
+  providerRating: 4.8,
+  vehicleType: "BIKE",
+  vehicleNumber: "PB10AB1234",
+} as const;
+
+export const driverSimulationSwaggerPaths = {
+  "/api/v1/admin/deliveries/{id}/driver/simulate": {
+    post: {
+      tags: ["Admin Driver Simulation"],
+      summary: "Simulate provider driver assignment (development/test only)",
+      description:
+        "Simulates a provider assigning a driver after booking. Reuses the same DriverService persistence and delivery transition path as real provider polling/webhooks. **Not available in production.** Requires ADMIN role.",
+      security: bearerSecurity,
+      parameters: [deliveryIdParam],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                status: { type: "string", enum: ["ASSIGNED"] },
+                providerDriverId: { type: "string", example: "MOCK-DRIVER-001" },
+                driverName: { type: "string", nullable: true, example: "Aman Singh" },
+                driverPhoneCountryCode: { type: "string", example: "+91" },
+                driverPhoneNumber: { type: "string", example: "9876543210" },
+                driverPhotoUrl: { type: "string", nullable: true },
+                providerRating: {
+                  type: "number",
+                  nullable: true,
+                  minimum: 0,
+                  maximum: 5,
+                  example: 4.8,
+                },
+                vehicleType: {
+                  type: "string",
+                  nullable: true,
+                  enum: ["BIKE", "SCOOTER", "CAR", "VAN", "TRUCK"],
+                  example: "BIKE",
+                },
+                vehicleNumber: { type: "string", nullable: true, example: "PB10AB1234" },
+              },
+              required: ["status", "providerDriverId"],
+            },
+            example: simulateDriverRequestExample,
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Simulated driver assignment persisted; delivery may transition to DRIVER_ASSIGNED",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", example: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      known: { type: "boolean", example: true },
+                      assigned: { type: "boolean", example: true },
+                      status: { type: "string", example: "ASSIGNED" },
+                      driver: { type: "object" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        403: { description: "Forbidden — ADMIN role required" },
+        404: {
+          description: "Delivery not found, or endpoint disabled in production",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        409: {
+          description: "Invalid delivery state for driver assignment simulation",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        422: {
+          description: "Invalid request body or no active provider booking",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
       },
     },
   },

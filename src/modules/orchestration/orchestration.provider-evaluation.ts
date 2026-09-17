@@ -2,9 +2,9 @@ import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import type { DeliveryDetailDto } from "../delivery/delivery.types.js";
 import {
-  toAvailabilityRequest,
   toQuoteRequest,
   toServiceabilityRequest,
+  toAvailabilityRequest,
 } from "../provider/adapters/delivery-provider.mapper.js";
 import {
   ProviderAdapterExecutor,
@@ -23,6 +23,10 @@ import type { AvailabilityResult } from "../provider/contracts/availability.js";
 import type { NormalizedQuote } from "../provider/contracts/quote.js";
 import type { NormalizedServiceabilityResult } from "../provider/contracts/serviceability.js";
 import type { ProviderWithRelations } from "../provider/provider.repository.js";
+import {
+  applyCancellationPolicyEligibility,
+  resolveCancellationPolicy,
+} from "./orchestration.cancellation-policy.js";
 import { EXCLUSION_REASONS } from "./orchestration.constants.js";
 import {
   evaluatePreAdapterCompatibility,
@@ -88,6 +92,7 @@ export class OrchestrationProviderEvaluationService {
       serviceability: null as NormalizedServiceabilityResult | null,
       availability: null as AvailabilityResult | null,
       quote: null as NormalizedQuote | null,
+      cancellationPolicy: null as ProviderEvaluationOutcome["signals"]["cancellationPolicy"],
       compatibility: {
         weightCompatible: true,
         dimensionsCompatible: true,
@@ -134,6 +139,9 @@ export class OrchestrationProviderEvaluationService {
       };
 
       const quoteRequest = toQuoteRequest(delivery, { serviceCode: serviceCode ?? undefined });
+      let probeCancellationPolicy:
+        | ProviderEvaluationOutcome["signals"]["cancellationPolicy"]
+        | undefined = undefined;
 
       if (
         isQuoteProbeAdapter(resolved.adapter) &&
@@ -145,6 +153,7 @@ export class OrchestrationProviderEvaluationService {
         baseSignals.quote = probe.quote;
         baseSignals.warnings = probe.warnings;
         baseSignals.providerMetadata = sanitizeMetadata(probe.providerMetadata);
+        probeCancellationPolicy = probe.cancellationPolicy ?? null;
       } else {
         if (resolved.adapter.supportsOperation("checkServiceability")) {
           baseSignals.serviceability = await this.executor.execute({
@@ -181,6 +190,18 @@ export class OrchestrationProviderEvaluationService {
           testHints,
         });
       }
+
+      baseSignals.cancellationPolicy = await resolveCancellationPolicy({
+        adapter: resolved.adapter,
+        providerCode: provider.code,
+        delivery,
+        serviceCode,
+        providerQuoteId: baseSignals.quote?.providerQuoteId,
+        requestId,
+        testHints,
+        probePolicy: probeCancellationPolicy ?? undefined,
+        executor: this.executor,
+      });
 
       return this.buildOutcome(baseSignals);
     } catch (error) {
@@ -225,11 +246,24 @@ export class OrchestrationProviderEvaluationService {
       exclusionReasons.push(EXCLUSION_REASONS.NO_DRIVER_AVAILABILITY);
     }
 
-    if (exclusionReasons.length > 0) {
+    const withCancellation = applyCancellationPolicyEligibility({
+      policy: signals.cancellationPolicy ?? {
+        supported: false,
+        allowedBeforePickup: false,
+        allowedAfterPickup: false,
+        fee: { type: "UNKNOWN" },
+        conditions: [],
+        policyKnown: false,
+        source: "UNKNOWN",
+      },
+      exclusionReasons,
+    });
+
+    if (withCancellation.length > 0) {
       return {
         status: "INELIGIBLE",
         signals,
-        exclusionReasons,
+        exclusionReasons: withCancellation,
         eligibilityReasons: [],
         errorCategory: null,
         score: null,

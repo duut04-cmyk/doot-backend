@@ -16,7 +16,9 @@ import { ProviderAdapterError } from "../src/modules/provider/contracts/provider
 import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
+import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
+import { seedCustomerUser } from "./helpers/otp-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
@@ -48,7 +50,18 @@ describe("Phase 7 audit fixes", () => {
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
     authRepo = new InMemoryAuthRepository();
+    seedCustomerUser(authRepo, { id: customerId });
   });
+
+  function createOtpService(otpRepo: InMemoryOtpRepository) {
+    return new OtpService(
+      deliveryRepo,
+      otpRepo,
+      new DeliveryLifecycleService(deliveryRepo),
+      authRepo,
+      createNoopEmailSender(),
+    );
+  }
 
   it("does not advance to PICKED_UP from tracking while pickup OTP is pending", async () => {
     const seeded = await seedBookedDelivery({
@@ -155,11 +168,7 @@ describe("Phase 7 audit fixes", () => {
       customerId,
     });
 
-    const otp = new OtpService(
-      deliveryRepo,
-      new InMemoryOtpRepository(),
-      new DeliveryLifecycleService(deliveryRepo),
-    );
+    const otp = createOtpService(new InMemoryOtpRepository());
 
     await otp.generatePickupOtp({
       deliveryId: seeded.deliveryId,
@@ -239,11 +248,7 @@ describe("Phase 7 audit fixes", () => {
     });
 
     const otpRepo = new InMemoryOtpRepository();
-    const otp = new OtpService(
-      deliveryRepo,
-      otpRepo,
-      new DeliveryLifecycleService(deliveryRepo),
-    );
+    const otp = createOtpService(otpRepo);
 
     const generated = await otp.generatePickupOtp({
       deliveryId: seeded.deliveryId,

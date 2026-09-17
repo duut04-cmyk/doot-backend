@@ -278,6 +278,11 @@ export class ProviderController {
         providerId: params.id,
         requestId: req.requestId,
       });
+      await this.service.recordConnectionTestResult({
+        providerId: params.id,
+        connected: result.data.connected,
+        audit: auditContext(req),
+      });
       res.status(200).json(result);
     } catch (error) {
       next(error);

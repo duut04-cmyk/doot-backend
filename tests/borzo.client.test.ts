@@ -6,10 +6,22 @@ import { ProviderHttpClient } from "../src/modules/provider/adapters/provider-ht
 import type { ProviderRuntimeConfig } from "../src/modules/provider/adapters/provider-config.types.js";
 import {
   failedBorzoCalculateOrderResponse,
+  sampleBookingRequest,
   sampleQuoteRequest,
   successfulBorzoCalculateOrderResponse,
+  successfulBorzoCancelOrderResponse,
+  successfulBorzoCourierResponse,
+  successfulBorzoCreateOrderResponse,
+  successfulBorzoOrdersListResponse,
 } from "./helpers/borzo-test-fixtures.js";
 import { mapQuoteRequestToBorzoCalculateOrder } from "../src/modules/provider/adapters/borzo/borzo.mapper.js";
+import { mapBookingRequestToBorzoCreateOrder } from "../src/modules/provider/adapters/borzo/borzo-operational.mapper.js";
+import {
+  BORZO_CANCEL_ORDER_PATH,
+  BORZO_COURIER_PATH,
+  BORZO_CREATE_ORDER_PATH,
+  BORZO_ORDERS_PATH,
+} from "../src/modules/provider/adapters/borzo/borzo.constants.js";
 
 function buildConfig(
   overrides?: Partial<ProviderRuntimeConfig>,
@@ -161,6 +173,78 @@ describe("Borzo client", () => {
     ).rejects.toMatchObject({
       safeMessage: "Borzo calculate-order response was malformed.",
     });
+  });
+
+  it("posts create-order to the documented path", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(successfulBorzoCreateOrderResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await client.createOrder({
+      config: buildConfig(),
+      requestId: "req-borzo-create-1",
+      body: mapBookingRequestToBorzoCreateOrder(sampleBookingRequest),
+    });
+    expect(response.is_successful).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(BORZO_CREATE_ORDER_PATH);
+  });
+
+  it("gets courier by order id", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(successfulBorzoCourierResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await client.getCourier({
+      config: buildConfig(),
+      requestId: "req-borzo-courier-1",
+      orderId: 1250100,
+    });
+    expect(response.courier?.courier_id).toBe(9001);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `${BORZO_COURIER_PATH}?order_id=1250100`,
+    );
+  });
+
+  it("gets order details by order id", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(successfulBorzoOrdersListResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await client.getOrder({
+      config: buildConfig(),
+      requestId: "req-borzo-order-1",
+      orderId: 1250100,
+    });
+    expect(response.orders?.[0]?.order_id).toBe(1250100);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `${BORZO_ORDERS_PATH}?order_id=1250100`,
+    );
+  });
+
+  it("posts cancel-order to the documented path", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(successfulBorzoCancelOrderResponse), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await client.cancelOrder({
+      config: buildConfig(),
+      requestId: "req-borzo-cancel-1",
+      body: { order_id: 1250100 },
+    });
+    expect(response.is_successful).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(BORZO_CANCEL_ORDER_PATH);
   });
 
   it("pings base URL for health check", async () => {

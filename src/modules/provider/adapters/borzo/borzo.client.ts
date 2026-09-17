@@ -10,17 +10,31 @@ import {
 import {
   BORZO_AUTH_HEADER,
   BORZO_CALCULATE_ORDER_PATH,
+  BORZO_CANCEL_ORDER_PATH,
+  BORZO_COURIER_PATH,
+  BORZO_CREATE_ORDER_PATH,
+  BORZO_ORDERS_PATH,
   BORZO_PROVIDER_CODE,
 } from "./borzo.constants.js";
 import { assertBorzoPhase4Environment } from "./borzo.mapper.js";
 import {
   borzoCalculateOrderResponseSchema,
+  borzoCancelOrderResponseSchema,
+  borzoCourierResponseSchema,
+  borzoCreateOrderResponseSchema,
   borzoHealthResponseSchema,
+  borzoOrdersListResponseSchema,
 } from "./borzo.schemas.js";
 import type {
   BorzoCalculateOrderRequest,
   BorzoCalculateOrderResponse,
+  BorzoCancelOrderRequest,
+  BorzoCancelOrderResponse,
+  BorzoCourierResponse,
+  BorzoCreateOrderRequest,
+  BorzoCreateOrderResponse,
   BorzoHealthResponse,
+  BorzoOrdersListResponse,
 } from "./borzo.types.js";
 
 export class BorzoClient {
@@ -58,6 +72,25 @@ export class BorzoClient {
     return {
       [BORZO_AUTH_HEADER]: this.resolveAuthToken(config),
     };
+  }
+
+  private mapHttpAuthError(
+    status: number,
+    operation: AdapterOperation,
+    requestId: string,
+  ): ProviderAdapterError {
+    return new ProviderAdapterError({
+      providerCode: BORZO_PROVIDER_CODE,
+      operation,
+      category:
+        status === 401
+          ? "PROVIDER_AUTHENTICATION_ERROR"
+          : "PROVIDER_AUTHORIZATION_ERROR",
+      safeMessage: "Borzo authentication failed.",
+      providerErrorCode: String(status),
+      requestId,
+      retryable: false,
+    });
   }
 
   async ping(input: {
@@ -101,50 +134,167 @@ export class BorzoClient {
     body: BorzoCalculateOrderRequest;
     operation?: AdapterOperation;
   }): Promise<BorzoCalculateOrderResponse> {
-    this.validateEnvironment(input.config);
-    const operation = input.operation ?? "getQuote";
+    return this.postOrderOperation({
+      ...input,
+      path: BORZO_CALCULATE_ORDER_PATH,
+      operation: input.operation ?? "getQuote",
+      schema: borzoCalculateOrderResponseSchema,
+      malformedMessage: "Borzo calculate-order response was malformed.",
+    });
+  }
 
-    const response = await this.httpClient.request<BorzoCalculateOrderResponse>(
-      {
-        config: input.config,
-        operation,
-        requestId: input.requestId,
-        allowErrorResponseBody: true,
-        request: {
-          method: "POST",
-          path: BORZO_CALCULATE_ORDER_PATH,
-          headers: this.buildHeaders(input.config),
-          body: input.body,
-        },
+  async createOrder(input: {
+    config: ProviderRuntimeConfig;
+    requestId: string;
+    body: BorzoCreateOrderRequest;
+    operation?: AdapterOperation;
+  }): Promise<BorzoCreateOrderResponse> {
+    return this.postOrderOperation({
+      ...input,
+      path: BORZO_CREATE_ORDER_PATH,
+      operation: input.operation ?? "createBooking",
+      schema: borzoCreateOrderResponseSchema,
+      malformedMessage: "Borzo create-order response was malformed.",
+    });
+  }
+
+  async cancelOrder(input: {
+    config: ProviderRuntimeConfig;
+    requestId: string;
+    body: BorzoCancelOrderRequest;
+    operation?: AdapterOperation;
+  }): Promise<BorzoCancelOrderResponse> {
+    return this.postOrderOperation({
+      ...input,
+      path: BORZO_CANCEL_ORDER_PATH,
+      operation: input.operation ?? "cancelBooking",
+      schema: borzoCancelOrderResponseSchema,
+      malformedMessage: "Borzo cancel-order response was malformed.",
+    });
+  }
+
+  async getCourier(input: {
+    config: ProviderRuntimeConfig;
+    requestId: string;
+    orderId: number;
+    operation?: AdapterOperation;
+  }): Promise<BorzoCourierResponse> {
+    this.validateEnvironment(input.config);
+    const operation = input.operation ?? "getTracking";
+
+    const response = await this.httpClient.request<BorzoCourierResponse>({
+      config: input.config,
+      operation,
+      requestId: input.requestId,
+      allowErrorResponseBody: true,
+      request: {
+        method: "GET",
+        path: `${BORZO_COURIER_PATH}?order_id=${input.orderId}`,
+        headers: this.buildHeaders(input.config),
       },
-    );
+    });
 
     if (response.status === 401 || response.status === 403) {
-      throw new ProviderAdapterError({
-        providerCode: BORZO_PROVIDER_CODE,
-        operation,
-        category:
-          response.status === 401
-            ? "PROVIDER_AUTHENTICATION_ERROR"
-            : "PROVIDER_AUTHORIZATION_ERROR",
-        safeMessage: "Borzo authentication failed.",
-        providerErrorCode: String(response.status),
-        requestId: input.requestId,
-      });
+      throw this.mapHttpAuthError(response.status, operation, input.requestId);
     }
 
-    const parsed = borzoCalculateOrderResponseSchema.safeParse(response.data);
+    const parsed = borzoCourierResponseSchema.safeParse(response.data);
     if (!parsed.success) {
       throw new ProviderAdapterError({
         providerCode: BORZO_PROVIDER_CODE,
         operation,
         category: "PROVIDER_UNKNOWN_ERROR",
-        safeMessage: "Borzo calculate-order response was malformed.",
+        safeMessage: "Borzo courier response was malformed.",
         requestId: input.requestId,
       });
     }
 
-    return parsed.data as BorzoCalculateOrderResponse;
+    return parsed.data as BorzoCourierResponse;
+  }
+
+  async getOrder(input: {
+    config: ProviderRuntimeConfig;
+    requestId: string;
+    orderId: number;
+    operation?: AdapterOperation;
+  }): Promise<BorzoOrdersListResponse> {
+    this.validateEnvironment(input.config);
+    const operation = input.operation ?? "getBooking";
+
+    const response = await this.httpClient.request<BorzoOrdersListResponse>({
+      config: input.config,
+      operation,
+      requestId: input.requestId,
+      allowErrorResponseBody: true,
+      request: {
+        method: "GET",
+        path: `${BORZO_ORDERS_PATH}?order_id=${input.orderId}`,
+        headers: this.buildHeaders(input.config),
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      throw this.mapHttpAuthError(response.status, operation, input.requestId);
+    }
+
+    const parsed = borzoOrdersListResponseSchema.safeParse(response.data);
+    if (!parsed.success) {
+      throw new ProviderAdapterError({
+        providerCode: BORZO_PROVIDER_CODE,
+        operation,
+        category: "PROVIDER_UNKNOWN_ERROR",
+        safeMessage: "Borzo orders response was malformed.",
+        requestId: input.requestId,
+      });
+    }
+
+    return parsed.data as BorzoOrdersListResponse;
+  }
+
+  private async postOrderOperation<TResponse>(input: {
+    config: ProviderRuntimeConfig;
+    requestId: string;
+    body: BorzoCalculateOrderRequest | BorzoCancelOrderRequest;
+    path: string;
+    operation: AdapterOperation;
+    schema: { safeParse: (value: unknown) => { success: boolean; data?: TResponse } };
+    malformedMessage: string;
+  }): Promise<TResponse> {
+    this.validateEnvironment(input.config);
+
+    const response = await this.httpClient.request<TResponse>({
+      config: input.config,
+      operation: input.operation,
+      requestId: input.requestId,
+      allowErrorResponseBody: true,
+      request: {
+        method: "POST",
+        path: input.path,
+        headers: this.buildHeaders(input.config),
+        body: input.body,
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      throw this.mapHttpAuthError(
+        response.status,
+        input.operation,
+        input.requestId,
+      );
+    }
+
+    const parsed = input.schema.safeParse(response.data);
+    if (!parsed.success) {
+      throw new ProviderAdapterError({
+        providerCode: BORZO_PROVIDER_CODE,
+        operation: input.operation,
+        category: "PROVIDER_UNKNOWN_ERROR",
+        safeMessage: input.malformedMessage,
+        requestId: input.requestId,
+      });
+    }
+
+    return parsed.data as TResponse;
   }
 }
 

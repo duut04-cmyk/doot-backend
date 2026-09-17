@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
+import { env } from "../../config/env.js";
 import { authenticate } from "../../core/middleware/authenticate.js";
 import { requireRole } from "../../core/middleware/authorize.js";
 import { validateRequest } from "../../core/validation/index.js";
@@ -13,6 +14,7 @@ import {
   type DriverController,
 } from "../driver/driver.controller.js";
 import { deliveryIdParamsSchema } from "../delivery/delivery.schema.js";
+import { simulateDriverAssignmentBodySchema } from "../driver/driver.schema.js";
 import { otpController, type OtpController } from "../otp/otp.controller.js";
 import { verifyOtpBodySchema } from "../otp/otp.schema.js";
 import {
@@ -119,6 +121,7 @@ export function createAdminOperationalRouter(options?: {
   driverController?: DriverController;
   trackingController?: TrackingController;
   authenticateMiddleware?: AuthenticateMiddleware;
+  enableDriverSimulation?: boolean;
 }): Router {
   const router = Router({ mergeParams: true });
   const driver = options?.driverController ?? driverController;
@@ -132,6 +135,19 @@ export function createAdminOperationalRouter(options?: {
     validateRequest({ params: deliveryIdParamsSchema }),
     driver.refreshFromProvider,
   );
+
+  const enableDriverSimulation =
+    options?.enableDriverSimulation ?? env.NODE_ENV !== "production";
+  if (enableDriverSimulation) {
+    router.post(
+      "/:id/driver/simulate",
+      validateRequest({
+        params: deliveryIdParamsSchema,
+        body: simulateDriverAssignmentBodySchema,
+      }),
+      driver.simulateProviderAssignment,
+    );
+  }
 
   router.post(
     "/:id/tracking/refresh",

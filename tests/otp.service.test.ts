@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import { AppError } from "../src/core/errors/app-error.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import { OtpService } from "../src/modules/otp/otp.service.js";
+import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
+import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
+import { seedCustomerUser } from "./helpers/otp-test-helpers.js";
 import { seedBookedDelivery } from "./helpers/operational-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
@@ -16,6 +19,9 @@ describe("OtpService", () => {
   let bookingRepo: InMemoryBookingRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let providerRepo: InMemoryProviderRepository;
+  let authRepo: InMemoryAuthRepository;
+  let sendPickupOtpEmail: ReturnType<typeof vi.fn>;
+  let sendDeliveryOtpEmail: ReturnType<typeof vi.fn>;
   let service: OtpService;
   const customerId = "11111111-1111-4111-8111-111111111111";
 
@@ -25,10 +31,16 @@ describe("OtpService", () => {
     bookingRepo = new InMemoryBookingRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
+    authRepo = new InMemoryAuthRepository();
+    seedCustomerUser(authRepo, { id: customerId });
+    sendPickupOtpEmail = vi.fn(async () => undefined);
+    sendDeliveryOtpEmail = vi.fn(async () => undefined);
     service = new OtpService(
       deliveryRepo,
       otpRepo,
       new DeliveryLifecycleService(deliveryRepo),
+      authRepo,
+      createNoopEmailSender({ sendPickupOtpEmail, sendDeliveryOtpEmail }),
     );
   });
 
@@ -61,6 +73,14 @@ describe("OtpService", () => {
 
     expect(result.data.type).toBe("PICKUP");
     expect(result.data._testOtp).toMatch(/^\d{6}$/);
+    expect(sendPickupOtpEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "customer@example.com",
+        recipientName: "Test Customer",
+        deliveryReference: seeded.deliveryReference,
+        otp: result.data._testOtp,
+      }),
+    );
     const delivery = await deliveryRepo.findById(seeded.deliveryId);
     expect(delivery?.status).toBe("PICKUP_OTP_PENDING");
   });
@@ -105,6 +125,50 @@ describe("OtpService", () => {
     ).rejects.toMatchObject({
       code: ErrorCodes.OTP_INVALID,
     });
+  });
+
+  it("generates delivery OTP, emails customer, and transitions to DELIVERY_OTP_PENDING", async () => {
+    const seeded = await seedDriverAssigned();
+    const pickup = await service.generatePickupOtp({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-delivery-email-1",
+    });
+    await service.verifyPickupOtp({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      otp: pickup.data._testOtp!,
+      requestId: "req-delivery-email-2",
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["PICKED_UP"],
+      toStatus: "IN_TRANSIT",
+      source: "TRACKING",
+      reason: "test",
+    });
+
+    const result = await service.generateDeliveryOtp({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-delivery-email-3",
+    });
+
+    expect(result.data.type).toBe("DELIVERY");
+    expect(result.data._testOtp).toMatch(/^\d{6}$/);
+    expect(sendDeliveryOtpEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "customer@example.com",
+        recipientName: "Test Customer",
+        deliveryReference: seeded.deliveryReference,
+        otp: result.data._testOtp,
+      }),
+    );
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("DELIVERY_OTP_PENDING");
   });
 
   it("completes delivery OTP lifecycle to DELIVERED", async () => {

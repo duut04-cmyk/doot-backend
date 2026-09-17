@@ -25,6 +25,8 @@ describe("AuthService", () => {
         sentEmails.push(input);
       }),
       sendPasswordResetOtpEmail: vi.fn(async () => undefined),
+      sendPickupOtpEmail: vi.fn(async () => undefined),
+      sendDeliveryOtpEmail: vi.fn(async () => undefined),
     };
     service = new AuthService(repository, mailer);
   });

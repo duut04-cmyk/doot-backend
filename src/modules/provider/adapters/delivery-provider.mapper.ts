@@ -14,6 +14,8 @@ function mapDeliveryCore(delivery: DeliveryDetailDto) {
       contactPhoneCountryCode: delivery.pickup.contactPhone.countryCode,
       contactPhoneNumber: delivery.pickup.contactPhone.number,
       instructions: delivery.pickup.instructions,
+      latitude: delivery.pickup.latitude,
+      longitude: delivery.pickup.longitude,
     },
     drop: {
       addressText: delivery.drop.addressText,
@@ -21,6 +23,8 @@ function mapDeliveryCore(delivery: DeliveryDetailDto) {
       contactPhoneCountryCode: delivery.drop.contactPhone.countryCode,
       contactPhoneNumber: delivery.drop.contactPhone.number,
       instructions: delivery.drop.instructions,
+      latitude: delivery.drop.latitude,
+      longitude: delivery.drop.longitude,
     },
     package: {
       packageType: delivery.package.packageType,

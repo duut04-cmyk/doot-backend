@@ -26,6 +26,8 @@ describe("Auth password reset OTP flow", () => {
     sentOtps = [];
     mailer = {
       sendVerificationEmail: vi.fn(async () => undefined),
+      sendPickupOtpEmail: vi.fn(async () => undefined),
+      sendDeliveryOtpEmail: vi.fn(async () => undefined),
       sendPasswordResetOtpEmail: vi.fn(async (input) => {
         sentOtps.push(input);
       }),

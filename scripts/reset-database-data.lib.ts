@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { DELIVERY_REFERENCE_PREFIX } from "../src/modules/delivery/delivery.constants.js";
 import { provisionAdminUser, type AdminSeedResult } from "../prisma/seed-admin.js";
 
 export class CleanupRefusedError extends Error {
@@ -326,7 +327,7 @@ export async function readDeliveryReferenceSequence(
   return {
     lastValue,
     isCalled,
-    nextReference: `DUTT-${nextNumeric}`,
+    nextReference: `${DELIVERY_REFERENCE_PREFIX}-${nextNumeric}`,
   };
 }
 

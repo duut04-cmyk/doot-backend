@@ -17,6 +17,7 @@ import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provid
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
+import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
@@ -82,7 +83,13 @@ describe("Operational HTTP", () => {
       ),
     );
     const otpController = new OtpController(
-      new OtpService(deliveryRepo, otpRepo, lifecycle),
+      new OtpService(
+        deliveryRepo,
+        otpRepo,
+        lifecycle,
+        authRepo,
+        createNoopEmailSender(),
+      ),
     );
     const trackingController = new TrackingController(
       new TrackingService(

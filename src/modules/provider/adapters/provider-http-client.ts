@@ -13,6 +13,18 @@ const REDACTED_HEADER_NAMES = new Set([
 
 type FetchFn = typeof fetch;
 
+export function resolveProviderRequestUrl(
+  baseUrl: string,
+  path: string,
+): string {
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  if (!path || path === "/") {
+    return normalizedBase.replace(/\/$/, "");
+  }
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  return new URL(normalizedPath, normalizedBase).toString();
+}
+
 export type ProviderHttpRequest = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
@@ -39,7 +51,10 @@ export class ProviderHttpClient {
     allowErrorResponseBody?: boolean;
   }): Promise<ProviderHttpResponse<T>> {
     const started = Date.now();
-    const url = new URL(input.request.path, input.config.baseUrl).toString();
+    const url = resolveProviderRequestUrl(
+      input.config.baseUrl,
+      input.request.path,
+    );
     const timeoutMs = input.request.timeoutMs ?? input.config.timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

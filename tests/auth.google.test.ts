@@ -23,6 +23,8 @@ describe("Auth Part 4 Google login", () => {
     mailer = {
       sendVerificationEmail: vi.fn(async () => undefined),
       sendPasswordResetOtpEmail: vi.fn(async () => undefined),
+      sendPickupOtpEmail: vi.fn(async () => undefined),
+      sendDeliveryOtpEmail: vi.fn(async () => undefined),
     };
     googleVerifier = {
       verifyIdToken: vi.fn(),

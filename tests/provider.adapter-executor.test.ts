@@ -15,19 +15,23 @@ import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 const sampleDelivery: DeliveryDetailDto = {
   id: "22222222-2222-2222-2222-222222222222",
-  reference: "DUTT-3000",
+  reference: "DOTT-3000",
   status: "CREATED",
   pickup: {
     addressText: "A",
     contactName: "A",
     contactPhone: phoneValue("+91", "1111111111"),
     instructions: null,
+    latitude: null,
+    longitude: null,
   },
   drop: {
     addressText: "B",
     contactName: "B",
     contactPhone: phoneValue("+91", "2222222222"),
     instructions: null,
+    latitude: null,
+    longitude: null,
   },
   package: {
     packageType: "FOOD",
@@ -159,6 +163,29 @@ describe("Provider adapter executor", () => {
     ).rejects.toMatchObject({
       code: ErrorCodes.PROVIDER_ADAPTER_ERROR,
     });
+  });
+
+  it("rejects invalid getTracking adapter output", async () => {
+    const repo = new InMemoryProviderRepository();
+    await seedMockProvider(repo, { integrationStatus: "READY" });
+    const registry = new ProviderAdapterRegistry();
+    registry.register({
+      metadata: new MockProviderAdapter().metadata,
+      supportsOperation: () => true,
+      execute: async () => ({ status: "IN_TRANSIT" }),
+    });
+    const badExecutor = new ProviderAdapterExecutor(
+      new ProviderAdapterResolver(registry, new ProviderConfigResolver(repo)),
+    );
+
+    await expect(
+      badExecutor.execute({
+        providerCode: "MOCK",
+        operation: "getTracking",
+        payload: { providerBookingId: MOCK_BOOKING_ID },
+        requestId: "exec-invalid-tracking",
+      }),
+    ).rejects.toThrow();
   });
 
   it("does not log credential secrets", async () => {

@@ -15,12 +15,16 @@ export type DeliveryHistoryDetail = {
     contactName: string;
     contactPhone: PhoneResponse;
     instructions: string | null;
+    latitude: number | null;
+    longitude: number | null;
   };
   drop: {
     addressText: string;
     contactName: string;
     contactPhone: PhoneResponse;
     instructions: string | null;
+    latitude: number | null;
+    longitude: number | null;
   };
   package: {
     packageType: string;

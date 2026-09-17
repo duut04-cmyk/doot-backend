@@ -39,11 +39,14 @@ import {
   classifyBookingExecutionError,
   resolveNormalizedBookingResult,
 } from "./booking.provider-outcome.js";
+import { hasMaterialCancellationPolicyChange } from "./booking.policy-freshness.js";
 import {
   hasMaterialPriceChange,
   isQuoteStale,
   resolveQuoteTimestamp,
 } from "./booking.quote-freshness.js";
+import type { CancellationPolicySnapshot } from "../provider/contracts/cancellation-policy.js";
+import { providerAdapterRegistry } from "../provider/adapters/provider-adapter-registry.js";
 import {
   bookingRepository,
   type IBookingRepository,
@@ -246,6 +249,50 @@ export class BookingService {
         providerQuoteId: refreshed.providerQuoteId,
         quotedAt: refreshed.quotedAt ?? new Date().toISOString(),
       };
+    }
+
+    const policySnapshot = selectedOption.cancellationPolicySnapshot as
+      | CancellationPolicySnapshot
+      | null;
+    if (policySnapshot?.policyKnown) {
+      const adapter = providerAdapterRegistry.resolve(selectedOption.providerCode);
+      if (adapter?.supportsOperation("getCancellationPolicy")) {
+        const refreshedPolicy = await this.adapterExecutor.execute({
+          providerCode: selectedOption.providerCode,
+          operation: "getCancellationPolicy",
+          payload: {
+            deliveryId: delivery.id,
+            deliveryReference: delivery.reference,
+            serviceCode: serviceValidation.serviceCode ?? undefined,
+            providerQuoteId: quoteSnapshot.providerQuoteId ?? null,
+          },
+          requestId: input.requestId,
+          requireReady: true,
+          testHints: input.testHints,
+        });
+        if (
+          hasMaterialCancellationPolicyChange({
+            original: policySnapshot,
+            refreshed: refreshedPolicy,
+          })
+        ) {
+          logger.warn(
+            {
+              requestId: input.requestId,
+              deliveryId: input.deliveryId,
+              providerCode: selectedOption.providerCode,
+            },
+            "booking_cancellation_policy_changed",
+          );
+          throw new AppError(
+            "The selected option cancellation policy has changed. Re-orchestrate and confirm again.",
+            {
+              statusCode: 409,
+              code: ErrorCodes.BOOKING_OPTION_CHANGED,
+            },
+          );
+        }
+      }
     }
 
     const attemptNumber = await this.bookingRepo.getNextAttemptNumber(

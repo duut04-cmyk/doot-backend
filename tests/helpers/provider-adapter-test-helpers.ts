@@ -11,6 +11,7 @@ const DEFAULT_CAPABILITIES: ProviderCapability[] = [
   "BOOKING",
   "CANCELLATION",
   "LIVE_TRACKING",
+  "TRACKING_URL",
   "WEBHOOKS",
 ];
 
@@ -128,6 +129,10 @@ export async function seedOrchestrationMockProvider(
 const BORZO_DEFAULT_CAPABILITIES: ProviderCapability[] = [
   "SERVICEABILITY",
   "PRICING",
+  "BOOKING",
+  "CANCELLATION",
+  "LIVE_TRACKING",
+  "WEBHOOKS",
 ];
 
 export async function seedBorzoProvider(

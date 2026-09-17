@@ -131,7 +131,7 @@ describe("resetDeliveryReferenceSequence", () => {
     vi.restoreAllMocks();
   });
 
-  it("restarts sequence and reports next DUTT reference", async () => {
+  it("restarts sequence and reports next DOTT reference", async () => {
     const prisma = {
       $executeRawUnsafe: vi.fn(async () => undefined),
       $queryRaw: vi.fn(async () => [{ last_value: 1000, is_called: false }]),
@@ -142,6 +142,6 @@ describe("resetDeliveryReferenceSequence", () => {
     expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
       "ALTER SEQUENCE delivery_reference_seq RESTART WITH 1000",
     );
-    expect(state.nextReference).toBe("DUTT-1000");
+    expect(state.nextReference).toBe("DOTT-1000");
   });
 });

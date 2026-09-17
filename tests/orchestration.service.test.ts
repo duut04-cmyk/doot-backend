@@ -9,6 +9,10 @@ import type { ProviderEvaluationOutcome } from "../src/modules/orchestration/orc
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
+import {
+  defaultCancellationPolicySnapshot,
+  knownFixedFeeCancellationPolicy,
+} from "./helpers/cancellation-policy-test-helpers.js";
 import { seedOrchestrationMockProvider } from "./helpers/provider-adapter-test-helpers.js";
 import { phoneValue } from "./helpers/phone-test-helpers.js";
 
@@ -62,6 +66,7 @@ function eligibleOutcome(input: {
       },
       warnings: [],
       providerMetadata: {},
+      cancellationPolicy: knownFixedFeeCancellationPolicy(),
     },
     exclusionReasons: [],
     eligibilityReasons: ["PROVIDER_ELIGIBLE"],
@@ -332,6 +337,7 @@ describe("OrchestrationService", () => {
       quoteSnapshot: { amount: 150, currency: "INR" },
       availabilitySnapshot: { known: false },
       etaSnapshot: null,
+      cancellationPolicySnapshot: defaultCancellationPolicySnapshot(),
     });
 
     const result = await buildService().orchestrate({
@@ -343,6 +349,65 @@ describe("OrchestrationService", () => {
 
     expect(result.data.status).toBe("OPTION_READY");
     expect(evaluateMock).not.toHaveBeenCalled();
+  });
+
+  it("excludes provider with unknown cancellation policy from best option", async () => {
+    const providerKnown = await seedOrchestrationMockProvider(providerRepo, {
+      code: "MOCK_KNOWN",
+      priority: 2,
+    });
+    const providerUnknown = await seedOrchestrationMockProvider(providerRepo, {
+      code: "MOCK_UNKNOWN",
+      priority: 1,
+    });
+    evaluateMock.mockImplementation(async ({ provider }) => {
+      if (provider.code === "MOCK_UNKNOWN") {
+        return {
+          status: "INELIGIBLE",
+          signals: {
+            ...eligibleOutcome({
+              providerId: providerUnknown,
+              providerCode: "MOCK_UNKNOWN",
+              amount: 90,
+            }).signals,
+            cancellationPolicy: {
+              supported: false,
+              allowedBeforePickup: false,
+              allowedAfterPickup: false,
+              fee: { type: "UNKNOWN" },
+              conditions: [],
+              policyKnown: false,
+              source: "UNKNOWN",
+            },
+          },
+          exclusionReasons: ["CANCELLATION_POLICY_UNKNOWN"],
+          eligibilityReasons: [],
+          errorCategory: null,
+          score: null,
+          scoreBreakdown: null,
+        };
+      }
+      return eligibleOutcome({
+        providerId: providerKnown,
+        providerCode: "MOCK_KNOWN",
+        amount: 150,
+      });
+    });
+
+    const deliveryId = await createDelivery();
+    const result = await buildService().orchestrate({
+      deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-unknown-policy",
+    });
+
+    expect(result.data.orchestration.selectedOption?.providerCode).toBe(
+      "MOCK_KNOWN",
+    );
+    expect(
+      result.data.orchestration.selectedOption?.cancellationPolicy.policyKnown,
+    ).toBe(true);
   });
 
   it("rejects orchestration for BOOKED deliveries", async () => {

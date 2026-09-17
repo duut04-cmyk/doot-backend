@@ -97,6 +97,11 @@ const envSchema = z
       .optional()
       .default(false),
 
+    BORZO_E2E_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
     BORZO_WEBHOOKS_ENABLED: z
       .preprocess((value) => value === "true" || value === true, z.boolean())
       .optional()

@@ -5,7 +5,11 @@ import {
   mapSettings,
   type ProviderWithRelations,
 } from "./provider.repository.js";
-import { computeIntegrationStatus, isOrchestrationEligible } from "./provider.readiness.js";
+import { providerAdapterRegistry } from "./adapters/provider-adapter-registry.js";
+import {
+  computeIntegrationStatusWithAdapter,
+  isOrchestrationEligible,
+} from "./provider.readiness.js";
 import type {
   ProviderDetailDto,
   ProviderServiceDto,
@@ -58,10 +62,12 @@ function mapVehicle(vehicle: ProviderWithRelations["vehicles"][number]): Provide
 }
 
 export function toProviderSummaryDto(provider: ProviderWithRelations): ProviderSummaryDto {
-  const integrationStatus = computeIntegrationStatus({
+  const integrationStatus = computeIntegrationStatusWithAdapter({
     provider,
     activeCredentials: provider.credentials,
     capabilities: provider.capabilities,
+    adapterRegistered: providerAdapterRegistry.has(provider.code),
+    healthStatus: provider.healthStatus,
   });
 
   return {

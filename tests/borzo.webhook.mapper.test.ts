@@ -19,6 +19,23 @@ function loadFixture(name: string): unknown {
 }
 
 describe("Borzo webhook mapper", () => {
+  it("maps courier from order callback when provider includes it", () => {
+    const callback = parseBorzoWebhookCallback(
+      loadFixture("order-created-with-courier.json"),
+    );
+    const normalized = mapBorzoWebhookCallbackToNormalizedEvent(
+      callback,
+      "2026-09-15T02:35:00.000Z",
+    );
+    expect(normalized.driver?.providerDriverId).toBe("9001");
+    expect(normalized.driver?.name).toBe("Raj Kumar");
+    expect(normalized.driver?.phone).toEqual({
+      countryCode: "+91",
+      number: "9876543210",
+    });
+    expect(normalized.driver?.providerRating).toBeNull();
+  });
+
   it("normalizes order_created callback", () => {
     const callback = parseBorzoWebhookCallback(loadFixture("order-created.json"));
     const normalized = mapBorzoWebhookCallbackToNormalizedEvent(

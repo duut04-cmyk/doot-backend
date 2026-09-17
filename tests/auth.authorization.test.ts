@@ -21,6 +21,7 @@ describe("Auth Part 5 authorization", () => {
   let mailer: {
     sendVerificationEmail: ReturnType<typeof vi.fn>;
     sendPasswordResetOtpEmail: ReturnType<typeof vi.fn>;
+    sendPickupOtpEmail: ReturnType<typeof vi.fn>;
   };
   let googleVerifier: {
     verifyIdToken: ReturnType<typeof vi.fn>;
@@ -31,6 +32,8 @@ describe("Auth Part 5 authorization", () => {
     mailer = {
       sendVerificationEmail: vi.fn(async () => undefined),
       sendPasswordResetOtpEmail: vi.fn(async () => undefined),
+      sendPickupOtpEmail: vi.fn(async () => undefined),
+      sendDeliveryOtpEmail: vi.fn(async () => undefined),
     };
     googleVerifier = {
       verifyIdToken: vi.fn(),

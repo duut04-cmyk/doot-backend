@@ -233,6 +233,15 @@ export class InMemoryProviderRepository implements IProviderRepository {
     if (typeof data.integrationStatus === "string") {
       provider.integrationStatus = data.integrationStatus;
     }
+    if (typeof data.healthStatus === "string") {
+      provider.healthStatus = data.healthStatus;
+    }
+    if (data.lastHealthCheckAt instanceof Date) {
+      provider.lastHealthCheckAt = data.lastHealthCheckAt;
+    }
+    if (data.lastHealthCheckError !== undefined) {
+      provider.lastHealthCheckError = data.lastHealthCheckError as string | null;
+    }
     provider.updatedAt = new Date();
     return this.withActiveCredentials(provider);
   }

@@ -11,8 +11,13 @@ import {
   seedMockProvider,
 } from "./helpers/provider-adapter-test-helpers.js";
 import {
+  sampleBookingRequest,
   sampleQuoteRequest,
   successfulBorzoCalculateOrderResponse,
+  successfulBorzoCancelOrderResponse,
+  successfulBorzoCourierResponse,
+  successfulBorzoCreateOrderResponse,
+  successfulBorzoOrdersListResponse,
 } from "./helpers/borzo-test-fixtures.js";
 import type { ProviderRuntimeConfig } from "../src/modules/provider/adapters/provider-config.types.js";
 import { BORZO_TEST_BASE_URL } from "../src/modules/provider/adapters/borzo/borzo.constants.js";
@@ -123,19 +128,79 @@ describe("Borzo adapter execution", () => {
     expect(result.availability.available).toBe(false);
   });
 
-  it("rejects unsupported operations", async () => {
-    const adapter = new BorzoAdapter();
-    await expect(
-      adapter.execute(
-        "createBooking",
-        {
-          ...sampleQuoteRequest,
-          serviceCode: "BORZO_BIKE",
-        },
-        { requestId: "req-exec-3", config },
-      ),
-    ).rejects.toMatchObject({
-      category: "PROVIDER_UNSUPPORTED_OPERATION",
+  it("executes createBooking via create-order", async () => {
+    const createOrder = vi
+      .fn()
+      .mockResolvedValue(successfulBorzoCreateOrderResponse);
+    const adapter = new BorzoAdapter({
+      createOrder,
+      ping: vi.fn(),
+    } as unknown as BorzoClient);
+
+    const booking = await adapter.execute("createBooking", sampleBookingRequest, {
+      requestId: "req-exec-3",
+      config: { ...config, capabilities: [...config.capabilities, "BOOKING"] },
     });
+    expect(booking.success).toBe(true);
+    expect(booking.providerBookingId).toBe("1250100");
+    expect(createOrder).toHaveBeenCalledOnce();
+  });
+
+  it("executes getTracking with courier and order lookup", async () => {
+    const getCourier = vi.fn().mockResolvedValue(successfulBorzoCourierResponse);
+    const getOrder = vi.fn().mockResolvedValue(successfulBorzoOrdersListResponse);
+    const adapter = new BorzoAdapter({
+      getCourier,
+      getOrder,
+      ping: vi.fn(),
+    } as unknown as BorzoClient);
+
+    const tracking = await adapter.execute(
+      "getTracking",
+      { providerBookingId: "1250100" },
+      {
+        requestId: "req-exec-4",
+        config: { ...config, capabilities: [...config.capabilities, "LIVE_TRACKING"] },
+      },
+    );
+    expect(tracking.latitude).toBe(12.9716);
+    expect(tracking.driver?.providerDriverId).toBe("9001");
+    expect(getCourier).toHaveBeenCalledOnce();
+    expect(getOrder).toHaveBeenCalledOnce();
+  });
+
+  it("executes cancelBooking via cancel-order", async () => {
+    const cancelOrder = vi
+      .fn()
+      .mockResolvedValue(successfulBorzoCancelOrderResponse);
+    const adapter = new BorzoAdapter({
+      cancelOrder,
+      ping: vi.fn(),
+    } as unknown as BorzoClient);
+
+    const result = await adapter.execute(
+      "cancelBooking",
+      { providerBookingId: "1250100", reason: "Customer request" },
+      {
+        requestId: "req-exec-5",
+        config: { ...config, capabilities: [...config.capabilities, "CANCELLATION"] },
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.outcome).toBe("CANCELLED");
+    expect(cancelOrder).toHaveBeenCalledOnce();
+  });
+
+  it("reports operational capabilities", () => {
+    const adapter = new BorzoAdapter();
+    expect(adapter.metadata.supportedOperations).toEqual(
+      expect.arrayContaining([
+        "createBooking",
+        "getBooking",
+        "cancelBooking",
+        "getTracking",
+      ]),
+    );
+    expect(adapter.supportsOperation("createBooking")).toBe(true);
   });
 });

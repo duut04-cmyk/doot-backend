@@ -166,6 +166,14 @@ export function toDeliveryHistoryDetail(input: {
         detail.pickup.contactPhoneNumber,
       )!,
       instructions: detail.pickup.instructions,
+      latitude:
+        detail.pickup.latitude == null
+          ? null
+          : decimalToNumber(detail.pickup.latitude),
+      longitude:
+        detail.pickup.longitude == null
+          ? null
+          : decimalToNumber(detail.pickup.longitude),
     },
     drop: {
       addressText: detail.drop.addressText,
@@ -175,6 +183,14 @@ export function toDeliveryHistoryDetail(input: {
         detail.drop.contactPhoneNumber,
       )!,
       instructions: detail.drop.instructions,
+      latitude:
+        detail.drop.latitude == null
+          ? null
+          : decimalToNumber(detail.drop.latitude),
+      longitude:
+        detail.drop.longitude == null
+          ? null
+          : decimalToNumber(detail.drop.longitude),
     },
     package: {
       packageType: detail.package.packageType,

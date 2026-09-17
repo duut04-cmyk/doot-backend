@@ -8,10 +8,18 @@ import {
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import {
+  authRepository,
+  type IAuthRepository,
+} from "../auth/auth.repository.js";
+import {
   generateEmailVerificationOtp,
   hashOtp,
   verifyOtpHash,
 } from "../auth/auth.crypto.js";
+import {
+  emailService,
+  type EmailSender,
+} from "../../infrastructure/email/email.service.js";
 import { loadAuthorizedDelivery } from "../delivery/delivery-access.js";
 import {
   deliveryRepository,
@@ -41,6 +49,8 @@ export class OtpService {
     private readonly deliveryRepo: IDeliveryRepository = deliveryRepository,
     private readonly otpRepo: IOtpRepository = otpRepository,
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
+    private readonly authRepo: IAuthRepository = authRepository,
+    private readonly mailer: EmailSender = emailService,
   ) {}
 
   async generatePickupOtp(input: {
@@ -74,6 +84,21 @@ export class OtpService {
       codeHash,
       expiresAt,
       maxAttempts: OTP_MAX_ATTEMPTS,
+    });
+
+    const customer = await this.authRepo.findUserById(delivery.customerId);
+    if (!customer) {
+      throw new AppError("Delivery customer account not found.", {
+        statusCode: 422,
+        code: ErrorCodes.OTP_NOT_ALLOWED,
+      });
+    }
+
+    await this.mailer.sendPickupOtpEmail({
+      to: customer.email,
+      recipientName: customer.name,
+      deliveryReference: delivery.reference,
+      otp: code,
     });
 
     if (
@@ -179,6 +204,21 @@ export class OtpService {
       codeHash,
       expiresAt,
       maxAttempts: OTP_MAX_ATTEMPTS,
+    });
+
+    const customer = await this.authRepo.findUserById(delivery.customerId);
+    if (!customer) {
+      throw new AppError("Delivery customer account not found.", {
+        statusCode: 422,
+        code: ErrorCodes.OTP_NOT_ALLOWED,
+      });
+    }
+
+    await this.mailer.sendDeliveryOtpEmail({
+      to: customer.email,
+      recipientName: customer.name,
+      deliveryReference: delivery.reference,
+      otp: code,
     });
 
     if (delivery.status === "IN_TRANSIT") {

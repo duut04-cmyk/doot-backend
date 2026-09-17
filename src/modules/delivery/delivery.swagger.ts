@@ -28,17 +28,33 @@ const locationInputSchema = {
     contactName: { type: "string", example: "Riya Sharma" },
     contactPhone: phoneInputSwaggerSchema,
     instructions: { type: "string", nullable: true, example: "Gate 2" },
+    latitude: {
+      type: "number",
+      nullable: true,
+      minimum: -90,
+      maximum: 90,
+      description: "Optional WGS84 latitude. Must be sent with longitude.",
+    },
+    longitude: {
+      type: "number",
+      nullable: true,
+      minimum: -180,
+      maximum: 180,
+      description: "Optional WGS84 longitude. Must be sent with latitude.",
+    },
   },
 } as const;
 
 const locationResponseSchema = {
   type: "object",
-  required: ["addressText", "contactName", "contactPhone"],
+  required: ["addressText", "contactName", "contactPhone", "latitude", "longitude"],
   properties: {
     addressText: { type: "string", example: "12 MG Road, Bengaluru" },
     contactName: { type: "string", example: "Riya Sharma" },
     contactPhone: phoneResponseSchema,
     instructions: { type: "string", nullable: true, example: "Gate 2" },
+    latitude: { type: "number", nullable: true, example: 12.9716 },
+    longitude: { type: "number", nullable: true, example: 77.5946 },
   },
 } as const;
 
@@ -86,7 +102,7 @@ const deliveryDetailSchema = {
   type: "object",
   properties: {
     id: { type: "string", format: "uuid" },
-    reference: { type: "string", example: "DUTT-1000" },
+    reference: { type: "string", example: "DOTT-1000" },
     status: { type: "string", example: "CREATED" },
     pickup: locationResponseSchema,
     drop: locationResponseSchema,

@@ -4,6 +4,7 @@ import type { InMemoryDeliveryRepository } from "./in-memory-delivery-repository
 import type { InMemoryOrchestrationRepository } from "./in-memory-orchestration-repository.js";
 import type { InMemoryProviderRepository } from "./in-memory-provider-repository.js";
 import { seedOrchestrationMockProvider } from "./provider-adapter-test-helpers.js";
+import { defaultCancellationPolicySnapshot } from "./cancellation-policy-test-helpers.js";
 
 export async function seedOptionReadyDelivery(input: {
   deliveryRepo: InMemoryDeliveryRepository;
@@ -30,12 +31,16 @@ export async function seedOptionReadyDelivery(input: {
       contactName: "A",
       ...storedPhone("+91", "9876543210"),
       instructions: null,
+      latitude: null,
+      longitude: null,
     },
     drop: {
       addressText: "Drop",
       contactName: "B",
       ...storedPhone("+91", "9811122233"),
       instructions: null,
+      latitude: null,
+      longitude: null,
     },
     package: {
       packageType: "FOOD",
@@ -132,6 +137,7 @@ export async function seedOptionReadyDelivery(input: {
     },
     availabilitySnapshot: { known: false },
     etaSnapshot: null,
+    cancellationPolicySnapshot: defaultCancellationPolicySnapshot(),
   });
 
   return {

@@ -2,6 +2,10 @@ import type { ProviderCapability } from "@prisma/client";
 import type { AvailabilityRequest, AvailabilityResult } from "../contracts/availability.js";
 import type { BookingRequest, NormalizedBookingResult } from "../contracts/booking.js";
 import type { CancellationRequest, NormalizedCancellationResult } from "../contracts/cancellation.js";
+import type {
+  CancellationPolicy,
+  CancellationPolicyRequest,
+} from "../contracts/cancellation-policy.js";
 import type { NormalizedQuote, QuoteRequest } from "../contracts/quote.js";
 import type {
   NormalizedServiceabilityResult,
@@ -21,6 +25,7 @@ export const ADAPTER_OPERATIONS = [
   "createBooking",
   "getBooking",
   "cancelBooking",
+  "getCancellationPolicy",
   "getTracking",
   "parseWebhook",
   "healthCheck",
@@ -63,6 +68,8 @@ export type AdapterExecutionContext = {
     mockTrackingStatus?: string;
     mockCancellationReject?: boolean;
     mockCancellationUnknown?: boolean;
+    mockCancellationPolicy?: CancellationPolicy;
+    mockCancellationPolicyKnown?: boolean;
   };
 };
 
@@ -79,6 +86,7 @@ export type AdapterOperationInputMap = {
   createBooking: BookingRequest;
   getBooking: { providerBookingId: string };
   cancelBooking: CancellationRequest;
+  getCancellationPolicy: CancellationPolicyRequest;
   getTracking: TrackingRequest;
   parseWebhook: WebhookParseRequest;
   healthCheck: Record<string, never>;
@@ -91,6 +99,7 @@ export type AdapterOperationOutputMap = {
   createBooking: NormalizedBookingResult;
   getBooking: NormalizedBookingResult;
   cancelBooking: NormalizedCancellationResult;
+  getCancellationPolicy: CancellationPolicy;
   getTracking: NormalizedTrackingResult;
   parseWebhook: NormalizedProviderWebhookEvent;
   healthCheck: HealthCheckResult;
@@ -119,6 +128,7 @@ export type ProviderQuoteProbeResult = {
   availability: AvailabilityResult;
   warnings: string[];
   providerMetadata: Record<string, unknown>;
+  cancellationPolicy?: CancellationPolicy;
 };
 
 export interface ProviderQuoteProbeAdapter extends ProviderAdapter {

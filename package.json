@@ -15,9 +15,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:borzo-e2e": "vitest run tests/borzo.e2e.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
-    "db:reset-data": "tsx scripts/reset-database-data.ts"
+    "db:reset-data": "tsx scripts/reset-database-data.ts",
+    "sync:mock-provider": "tsx scripts/sync-mock-provider-capabilities.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

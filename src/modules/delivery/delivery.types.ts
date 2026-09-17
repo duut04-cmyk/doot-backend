@@ -6,7 +6,10 @@ import type {
   ScheduleMode,
 } from "@prisma/client";
 import type { PhoneResponse } from "../../core/phone/phone.types.js";
-import { DIMENSIONS_REQUIRED_ABOVE_KG } from "./delivery.constants.js";
+import {
+  MEDIUM_PACKAGE_MAX_WEIGHT_KG,
+  SMALL_PACKAGE_MAX_WEIGHT_KG,
+} from "./delivery.constants.js";
 
 export type DeliveryLocationInput = {
   addressText: string;
@@ -14,6 +17,8 @@ export type DeliveryLocationInput = {
   contactPhoneCountryCode: string;
   contactPhoneNumber: string;
   instructions?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type DeliveryPackagePhotoInput = {
@@ -57,6 +62,8 @@ export type DeliveryLocationDto = {
   contactName: string;
   contactPhone: PhoneResponse;
   instructions: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type DeliveryPackagePhotoDto = {
@@ -154,6 +161,8 @@ export type NormalizedCreateDelivery = {
     contactPhoneCountryCode: string;
     contactPhoneNumber: string;
     instructions: string | null;
+    latitude: number | null;
+    longitude: number | null;
   };
   drop: {
     addressText: string;
@@ -161,6 +170,8 @@ export type NormalizedCreateDelivery = {
     contactPhoneCountryCode: string;
     contactPhoneNumber: string;
     instructions: string | null;
+    latitude: number | null;
+    longitude: number | null;
   };
   package: {
     packageType: PackageType;
@@ -194,10 +205,10 @@ export type NormalizedCreateDelivery = {
 };
 
 export function deriveSizeTier(weightKg: number): PackageSizeTier {
-  if (weightKg <= 2) {
+  if (weightKg <= SMALL_PACKAGE_MAX_WEIGHT_KG) {
     return "SMALL";
   }
-  if (weightKg <= DIMENSIONS_REQUIRED_ABOVE_KG) {
+  if (weightKg <= MEDIUM_PACKAGE_MAX_WEIGHT_KG) {
     return "MEDIUM";
   }
   return "LARGE";

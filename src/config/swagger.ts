@@ -10,7 +10,11 @@ import {
 } from "../modules/delivery/delivery.swagger.js";
 import { bookingSwaggerPaths } from "../modules/booking/booking.swagger.js";
 import { feedbackSwaggerPaths } from "../modules/feedback/feedback.swagger.js";
-import { operationalSwaggerPaths } from "../modules/operations/operational.swagger.js";
+import {
+  driverSimulationSwaggerPaths,
+  operationalSwaggerPaths,
+} from "../modules/operations/operational.swagger.js";
+import { env } from "./env.js";
 import { ratingSwaggerPaths } from "../modules/rating/rating.swagger.js";
 import {
   orchestrationSwaggerPaths,
@@ -73,6 +77,11 @@ export function buildOpenApiDocument() {
       { name: "Deliveries", description: "Customer delivery foundation" },
       { name: "Admin Providers", description: "Provider registry and admin configuration" },
       { name: "Admin Deliveries", description: "Admin delivery operational tools" },
+      {
+        name: "Admin Driver Simulation",
+        description:
+          "Development/test-only endpoints for simulating provider driver assignment",
+      },
     ],
     paths: {
       ...healthPaths,
@@ -81,6 +90,7 @@ export function buildOpenApiDocument() {
       ...orchestrationSwaggerPaths,
       ...bookingSwaggerPaths,
       ...operationalSwaggerPaths,
+      ...(env.NODE_ENV !== "production" ? driverSimulationSwaggerPaths : {}),
       ...ratingSwaggerPaths,
       ...feedbackSwaggerPaths,
       ...providerSwaggerPaths,

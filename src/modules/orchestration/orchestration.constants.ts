@@ -1,5 +1,11 @@
 import type { DeliveryStatus } from "@prisma/client";
 
+/**
+ * When true, providers with unknown cancellation policy are ineligible for the
+ * customer-facing Best Possible Option (customer-protection rule).
+ */
+export const REQUIRE_KNOWN_CANCELLATION_POLICY = true;
+
 /** Initial MVP scoring weights (sum = 100). Unknown factors are renormalized. */
 export const SCORE_WEIGHTS = {
   PRICE: 40,
@@ -22,6 +28,7 @@ export const EXCLUSION_REASONS = {
   PACKAGE_TYPE_NOT_SUPPORTED: "PACKAGE_TYPE_NOT_SUPPORTED",
   SCHEDULE_NOT_SUPPORTED: "SCHEDULE_NOT_SUPPORTED",
   REQUIREMENTS_NOT_SUPPORTED: "REQUIREMENTS_NOT_SUPPORTED",
+  CANCELLATION_POLICY_UNKNOWN: "CANCELLATION_POLICY_UNKNOWN",
 } as const;
 
 export type ExclusionReason =
