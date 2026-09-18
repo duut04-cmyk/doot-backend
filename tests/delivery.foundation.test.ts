@@ -47,7 +47,6 @@ function basePayload(overrides?: Record<string, unknown>) {
       packageType: "FOOD",
       description: "Fresh meal",
       weightKg: 1.8,
-      sizeTier: "SMALL",
       quantity: 1,
       photos: [
         {
@@ -143,7 +142,7 @@ describe("Delivery Phase 1 foundation", () => {
 
       expect(result.data.status).toBe("CREATED");
       expect(result.data.reference).toMatch(/^DOTT-\d+$/);
-      expect(result.data.package.sizeTier).toBe("SMALL");
+      expect(result.data.package.sizeTier).toBe("MEDIUM");
       expect(result.data.compliance.accepted).toBe(true);
       expect(result.data.compliance.acceptedAt).toBeTruthy();
       expect(deliveryRepo.deliveries[0]?.statusEvents[0]?.toStatus).toBe("CREATED");
@@ -189,7 +188,7 @@ describe("Delivery Phase 1 foundation", () => {
         customerId,
         body: createDeliverySchema.parse(
           basePayload({
-            package: { packageType: "DOCUMENT", weightKg: 0.8, photos: [] },
+            package: { packageType: "DOCUMENT", weightKg: 0.4, photos: [] },
           }),
         ),
         idempotencyKey: "light",
@@ -211,7 +210,12 @@ describe("Delivery Phase 1 foundation", () => {
       expect(() =>
         createDeliverySchema.parse(
           basePayload({
-            package: { packageType: "OTHER", description: "Box", weightKg: 4.5, photos: [] },
+            package: {
+              packageType: "OTHER",
+              description: "Box",
+              weightKg: 4.5,
+              photos: [],
+            },
           }),
         ),
       ).toThrow();
@@ -507,9 +511,9 @@ describe("Delivery Phase 1 foundation", () => {
   describe("authorization & http", () => {
     it("rejects unauthenticated create/list/detail", async () => {
       const app = buildApp();
-      expect((await request(app).post("/api/v1/deliveries").send(basePayload())).status).toBe(
-        401,
-      );
+      expect(
+        (await request(app).post("/api/v1/deliveries").send(basePayload())).status,
+      ).toBe(401);
       expect((await request(app).get("/api/v1/deliveries")).status).toBe(401);
       expect(
         (await request(app).get(`/api/v1/deliveries/${randomUUID()}`)).status,

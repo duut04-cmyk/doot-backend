@@ -1,9 +1,12 @@
 import express from "express";
 import request from "supertest";
+import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
 import { createAuthenticateMiddleware } from "../src/core/middleware/authenticate.js";
 import { errorHandlerMiddleware } from "../src/core/middleware/error-handler.js";
 import { requestIdMiddleware } from "../src/core/middleware/request-id.js";
+import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import { CancellationController } from "../src/modules/cancellation/cancellation.controller.js";
 import { CancellationService } from "../src/modules/cancellation/cancellation.service.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
@@ -16,10 +19,8 @@ import { initializeProviderAdapters } from "../src/modules/provider/adapters/boo
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
-import { ErrorCodes } from "../src/core/errors/error-codes.js";
-import { GENERIC_OTP_ERROR } from "../src/modules/otp/otp.constants.js";
-import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
 import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
+import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
@@ -29,9 +30,10 @@ import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestrati
 import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { InMemoryTrackingRepository } from "./helpers/in-memory-tracking-repository.js";
+import { seedInTransitDelivery } from "./helpers/otp-test-helpers.js";
 import { seedBookedDelivery } from "./helpers/operational-test-helpers.js";
 
-describe("Operational HTTP", () => {
+describe("Cancellation HTTP", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
   let bookingRepo: InMemoryBookingRepository;
   let driverRepo: InMemoryDriverRepository;
@@ -43,7 +45,9 @@ describe("Operational HTTP", () => {
   let authRepo: InMemoryAuthRepository;
   let executeMock: ReturnType<typeof vi.fn>;
   let customerId: string;
+  let otherCustomerId: string;
   let token: string;
+  let otherToken: string;
 
   beforeEach(async () => {
     initializeProviderAdapters();
@@ -60,13 +64,23 @@ describe("Operational HTTP", () => {
 
     const customer = await authRepo.createUser({
       name: "Customer",
-      email: "ops@example.com",
+      email: "cancel@example.com",
       passwordHash: "hash",
       emailVerified: true,
     });
     customer.role = "CUSTOMER";
     customerId = customer.id;
     token = generateAccessToken(customerId);
+
+    const other = await authRepo.createUser({
+      name: "Other",
+      email: "other@example.com",
+      passwordHash: "hash",
+      emailVerified: true,
+    });
+    other.role = "CUSTOMER";
+    otherCustomerId = other.id;
+    otherToken = generateAccessToken(otherCustomerId);
   });
 
   function buildApp() {
@@ -119,143 +133,48 @@ describe("Operational HTTP", () => {
     return app;
   }
 
-  it("returns 401 without auth on driver endpoint", async () => {
-    const app = buildApp();
-    const res = await request(app).get(
-      "/api/v1/deliveries/00000000-0000-4000-8000-000000000001/driver",
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns unknown driver before provider assignment", async () => {
-    const seeded = await seedBookedDelivery({
-      deliveryRepo,
-      orchestrationRepo,
-      providerRepo,
-      bookingRepo,
-      customerId,
-    });
-
+  it("returns 401 without auth on cancel endpoint", async () => {
     const app = buildApp();
     const res = await request(app)
-      .get(`/api/v1/deliveries/${seeded.deliveryId}/driver`)
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.known).toBe(false);
-  });
-
-  it("returns 401 without auth on pickup OTP verify endpoint", async () => {
-    const app = buildApp();
-    const res = await request(app)
-      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/pickup/verify-otp")
-      .send({ otp: "123456" });
+      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/cancel")
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe(ErrorCodes.UNAUTHORIZED);
   });
 
-  it("returns 400 for invalid OTP format over HTTP", async () => {
-    const seeded = await seedBookedDelivery({
-      deliveryRepo,
-      orchestrationRepo,
-      providerRepo,
-      bookingRepo,
-      customerId,
-    });
-    await deliveryRepo.transitionStatus({
-      deliveryId: seeded.deliveryId,
-      expectedFromStatuses: ["BOOKED"],
-      toStatus: "DRIVER_ASSIGNED",
-      source: "TRACKING",
-      reason: "test",
-    });
-
+  it("returns 401 without auth on get cancellation endpoint", async () => {
     const app = buildApp();
-    await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
-      .set("Authorization", `Bearer ${token}`);
+    const res = await request(app).get(
+      "/api/v1/deliveries/00000000-0000-4000-8000-000000000001/cancellation",
+    );
 
-    const res = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup/verify-otp`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ otp: "12345" });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.UNAUTHORIZED);
   });
 
-  it("returns 422 for incorrect pickup OTP without revealing the expected code", async () => {
-    const seeded = await seedBookedDelivery({
+  it("returns 404 when another customer cancels a delivery", async () => {
+    const seeded = await seedOptionReadyDelivery({
       deliveryRepo,
       orchestrationRepo,
       providerRepo,
-      bookingRepo,
       customerId,
-    });
-    await deliveryRepo.transitionStatus({
-      deliveryId: seeded.deliveryId,
-      expectedFromStatuses: ["BOOKED"],
-      toStatus: "DRIVER_ASSIGNED",
-      source: "TRACKING",
-      reason: "test",
     });
 
     const app = buildApp();
-    const generated = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
-      .set("Authorization", `Bearer ${token}`);
-
     const res = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup/verify-otp`)
-      .set("Authorization", `Bearer ${token}`)
-      .send({ otp: "000000" });
-
-    expect(res.status).toBe(422);
-    expect(res.body.error.code).toBe(ErrorCodes.OTP_INVALID);
-    expect(res.body.error.message).toBe(GENERIC_OTP_ERROR);
-    expect(JSON.stringify(res.body)).not.toContain(generated.body.data._testOtp);
-  });
-
-  it("returns 404 when another customer accesses OTP endpoints", async () => {
-    const seeded = await seedBookedDelivery({
-      deliveryRepo,
-      orchestrationRepo,
-      providerRepo,
-      bookingRepo,
-      customerId,
-    });
-    await deliveryRepo.transitionStatus({
-      deliveryId: seeded.deliveryId,
-      expectedFromStatuses: ["BOOKED"],
-      toStatus: "DRIVER_ASSIGNED",
-      source: "TRACKING",
-      reason: "test",
-    });
-
-    const other = await authRepo.createUser({
-      name: "Other",
-      email: "other-http@example.com",
-      passwordHash: "hash",
-      emailVerified: true,
-    });
-    other.role = "CUSTOMER";
-    const otherToken = generateAccessToken(other.id);
-
-    const app = buildApp();
-    const res = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
-      .set("Authorization", `Bearer ${otherToken}`);
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${otherToken}`)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe(ErrorCodes.DELIVERY_NOT_FOUND);
   });
 
-  it("returns 403 for suspended users on OTP endpoints", async () => {
+  it("returns 403 for suspended users on cancel endpoint", async () => {
     const suspended = await authRepo.createUser({
       name: "Suspended",
-      email: "suspended@example.com",
+      email: "suspended-cancel@example.com",
       passwordHash: "hash",
       emailVerified: true,
     });
@@ -265,47 +184,60 @@ describe("Operational HTTP", () => {
 
     const app = buildApp();
     const res = await request(app)
-      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/pickup-otp")
-      .set("Authorization", `Bearer ${suspendedToken}`);
+      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/cancel")
+      .set("Authorization", `Bearer ${suspendedToken}`)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
 
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe(ErrorCodes.ACCOUNT_SUSPENDED);
   });
 
-  it("generates and verifies pickup OTP over HTTP", async () => {
-    const seeded = await seedBookedDelivery({
+  it("returns 422 for post-pickup cancellation over HTTP", async () => {
+    const otpService = new OtpService(
+      deliveryRepo,
+      otpRepo,
+      new DeliveryLifecycleService(deliveryRepo),
+      authRepo,
+      createNoopEmailSender(),
+    );
+    const seeded = await seedInTransitDelivery({
+      service: otpService,
       deliveryRepo,
       orchestrationRepo,
       providerRepo,
       bookingRepo,
       customerId,
     });
-    await deliveryRepo.transitionStatus({
-      deliveryId: seeded.deliveryId,
-      expectedFromStatuses: ["BOOKED"],
-      toStatus: "DRIVER_ASSIGNED",
-      source: "TRACKING",
-      reason: "test",
+
+    const app = buildApp();
+    const res = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe(ErrorCodes.CANCELLATION_NOT_ALLOWED);
+  });
+
+  it("returns 400 for invalid cancellation reason code", async () => {
+    const seeded = await seedOptionReadyDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      customerId,
     });
 
     const app = buildApp();
-    const generated = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(generated.status).toBe(200);
-    expect(generated.body.data._testOtp).toMatch(/^\d{6}$/);
-
-    const verified = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup/verify-otp`)
+    const res = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ otp: generated.body.data._testOtp });
+      .send({ reasonCode: "NOT_A_VALID_REASON" });
 
-    expect(verified.status).toBe(200);
-    expect(verified.body.data.status).toBe("PICKED_UP");
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
   });
 
-  it("cancels booked delivery over HTTP", async () => {
+  it("cancels booked delivery and exposes cancellation details over HTTP", async () => {
     executeMock.mockResolvedValue({
       success: true,
       outcome: "CANCELLED",
@@ -324,12 +256,122 @@ describe("Operational HTTP", () => {
     });
 
     const app = buildApp();
+    const cancelRes = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
+
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body.data.delivery.status).toBe("CANCELLED");
+
+    const getRes = await request(app)
+      .get(`/api/v1/deliveries/${seeded.deliveryId}/cancellation`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.data.cancellation.status).toBe("CANCELLED");
+    expect(getRes.body.data.cancellation.reasonCode).toBe("CUSTOMER_CHANGED_MIND");
+  });
+
+  it("returns cached cancel response for repeated idempotency key", async () => {
+    executeMock.mockResolvedValue({
+      success: true,
+      outcome: "CANCELLED",
+      providerCancellationId: "PC-IDEM",
+      status: "CANCELLED",
+      reason: null,
+      cancelledAt: new Date().toISOString(),
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    const key = randomUUID();
+
+    const app = buildApp();
+    const first = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", key)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
+
+    const second = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", key)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.data).toEqual(first.body.data);
+    expect(executeMock).toHaveBeenCalledOnce();
+  });
+
+  it("returns 409 when idempotency key is reused with different body", async () => {
+    executeMock.mockResolvedValue({
+      success: true,
+      outcome: "CANCELLED",
+      providerCancellationId: "PC-IDEM-CONFLICT",
+      status: "CANCELLED",
+      reason: null,
+      cancelledAt: new Date().toISOString(),
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    const key = randomUUID();
+
+    const app = buildApp();
+    await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", key)
+      .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
+
+    const conflict = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
+      .set("Authorization", `Bearer ${token}`)
+      .set("Idempotency-Key", key)
+      .send({ reasonCode: "WRONG_ADDRESS" });
+
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.code).toBe(ErrorCodes.IDEMPOTENCY_CONFLICT);
+  });
+
+  it("returns 422 when provider rejects cancellation over HTTP", async () => {
+    executeMock.mockResolvedValue({
+      success: false,
+      outcome: "REJECTED",
+      providerCancellationId: null,
+      status: "ACTIVE",
+      reason: "Cannot cancel now",
+      cancelledAt: null,
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    const app = buildApp();
     const res = await request(app)
       .post(`/api/v1/deliveries/${seeded.deliveryId}/cancel`)
       .set("Authorization", `Bearer ${token}`)
       .send({ reasonCode: "CUSTOMER_CHANGED_MIND" });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.delivery.status).toBe("CANCELLED");
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe(ErrorCodes.PROVIDER_CANCELLATION_REJECTED);
   });
 });

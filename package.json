@@ -13,6 +13,10 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:borzo-e2e": "vitest run tests/borzo.e2e.test.ts",
@@ -39,6 +43,15 @@
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.6.5"
   },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/bcrypt": "^6.0.0",
@@ -51,6 +64,10 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.8",
     "prisma": "^6.19.3",
     "supertest": "^7.2.2",
     "tsx": "^4.23.13",

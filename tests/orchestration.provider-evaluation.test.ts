@@ -67,7 +67,9 @@ function sampleProvider(code = "MOCK"): ProviderWithRelations {
     healthStatus: "HEALTHY",
     priority: 1,
     capabilities: [{ capability: "CANCELLATION" }],
-    services: [{ id: randomUUID(), code: "MOCK_BIKE", name: "Mock Bike", enabled: true }],
+    services: [
+      { id: randomUUID(), code: "MOCK_BIKE", name: "Mock Bike", enabled: true },
+    ],
     vehicles: [],
     limits: [],
     credentials: [],
@@ -85,11 +87,13 @@ describe("OrchestrationProviderEvaluationService cancellation policy", () => {
   beforeEach(() => {
     const adapter = new MockProviderAdapter();
     executor = {
-      execute: vi.fn(async (input) => adapter.execute(input.operation, input.payload, {
-        requestId: input.requestId,
-        config: { providerCode: "MOCK" } as never,
-        testHints: input.testHints,
-      })),
+      execute: vi.fn(async (input) =>
+        adapter.execute(input.operation, input.payload, {
+          requestId: input.requestId,
+          config: { providerCode: "MOCK" } as never,
+          testHints: input.testHints,
+        }),
+      ),
     } as unknown as ProviderAdapterExecutor;
     resolver = {
       resolveForExecution: vi.fn(async () => ({
@@ -184,5 +188,30 @@ describe("OrchestrationProviderEvaluationService cancellation policy", () => {
 
     expect(outcome.signals.cancellationPolicy?.fee.type).toBe("UNKNOWN");
     expect(outcome.status).toBe("INELIGIBLE");
+  });
+
+  it("returns ERROR outcome when mockSimulateTimeout is set", async () => {
+    const outcome = await service.evaluateProvider({
+      provider: sampleProvider(),
+      delivery: sampleDelivery(),
+      requestId: "req-eval-timeout",
+      testHints: { mockSimulateTimeout: true },
+    });
+
+    expect(outcome.status).toBe("ERROR");
+    expect(outcome.errorCategory).toBe("PROVIDER_TIMEOUT");
+    expect(outcome.signals.quote).toBeNull();
+  });
+
+  it("returns ERROR outcome when mockSimulateError is set", async () => {
+    const outcome = await service.evaluateProvider({
+      provider: sampleProvider(),
+      delivery: sampleDelivery(),
+      requestId: "req-eval-error",
+      testHints: { mockSimulateError: true },
+    });
+
+    expect(outcome.status).toBe("ERROR");
+    expect(outcome.errorCategory).toBe("PROVIDER_ADAPTER_ERROR");
   });
 });
