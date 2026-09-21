@@ -10,11 +10,8 @@ async function bootstrap(): Promise<void> {
 
   initializeProviderAdapters();
   const app = createApp();
-  const server = app.listen(env.PORT, () => {
-    logger.info(
-      { port: env.PORT, env: env.NODE_ENV },
-      "Dutt backend listening",
-    );
+  const server = app.listen(env.PORT, "0.0.0.0", () => {
+    logger.info({ port: env.PORT, env: env.NODE_ENV }, "Dutt backend listening");
     if (env.NODE_ENV === "development") {
       console.log(`✓ Backend ready on http://localhost:${env.PORT}`);
     }
