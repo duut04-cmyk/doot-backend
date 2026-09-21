@@ -70,6 +70,20 @@ export function createApp(options?: {
 
   app.use("/api/v1", createApiV1Router(options));
 
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message: "Dutt backend is running",
+    });
+  });
+
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message: "Dutt backend is healthy",
+    });
+  });
+
   app.use(notFoundMiddleware);
   app.use(errorHandlerMiddleware);
 
