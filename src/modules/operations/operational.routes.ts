@@ -1,8 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { env } from "../../config/env.js";
+import {
+  AUTH_RATE_LIMIT_WINDOWS,
+  otpGenerateIpRateLimit,
+  otpVerifyIpRateLimit,
+} from "../../core/middleware/auth-rate-limits.js";
 import { authenticate } from "../../core/middleware/authenticate.js";
 import { requireRole } from "../../core/middleware/authorize.js";
+import { createAuthenticatedDeliveryOtpRateLimiter } from "../../core/middleware/rate-limit.js";
 import { validateRequest } from "../../core/validation/index.js";
 import {
   cancellationController,
@@ -63,37 +69,62 @@ export function createOperationalRouter(options?: {
     tracking.getHistory,
   );
 
+  const pickupGenerateDeliveryRateLimit = createAuthenticatedDeliveryOtpRateLimiter(
+    "pickup-generate",
+    AUTH_RATE_LIMIT_WINDOWS.otpGenerateDelivery,
+  );
+  const deliveryGenerateDeliveryRateLimit = createAuthenticatedDeliveryOtpRateLimiter(
+    "delivery-generate",
+    AUTH_RATE_LIMIT_WINDOWS.otpGenerateDelivery,
+  );
+  const pickupVerifyDeliveryRateLimit = createAuthenticatedDeliveryOtpRateLimiter(
+    "pickup-verify",
+    AUTH_RATE_LIMIT_WINDOWS.otpVerifyDelivery,
+  );
+  const deliveryVerifyDeliveryRateLimit = createAuthenticatedDeliveryOtpRateLimiter(
+    "delivery-verify",
+    AUTH_RATE_LIMIT_WINDOWS.otpVerifyDelivery,
+  );
+
   router.post(
     "/:id/pickup-otp",
     auth,
+    otpGenerateIpRateLimit,
     validateRequest({ params: deliveryIdParamsSchema }),
+    pickupGenerateDeliveryRateLimit,
     otp.generatePickupOtp,
   );
 
   router.post(
     "/:id/pickup/verify-otp",
     auth,
+    otpVerifyIpRateLimit,
     validateRequest({
       params: deliveryIdParamsSchema,
       body: verifyOtpBodySchema,
     }),
+    pickupVerifyDeliveryRateLimit,
     otp.verifyPickupOtp,
   );
 
   router.post(
     "/:id/delivery-otp",
     auth,
+    otpGenerateIpRateLimit,
     validateRequest({ params: deliveryIdParamsSchema }),
+    deliveryGenerateDeliveryRateLimit,
     otp.generateDeliveryOtp,
   );
 
   router.post(
     "/:id/delivery/verify-otp",
     auth,
+    otpVerifyIpRateLimit,
     validateRequest({
       params: deliveryIdParamsSchema,
       body: verifyOtpBodySchema,
     }),
+    deliveryVerifyDeliveryRateLimit,
     otp.verifyDeliveryOtp,
   );
 

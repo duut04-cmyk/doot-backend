@@ -23,6 +23,15 @@ describe("Borzo operational mapper", () => {
     expect(body.total_weight_kg).toBe(2);
   });
 
+  it("does not send platform OTP or checkin_code fields to Borzo create-order", () => {
+    const body = mapBookingRequestToBorzoCreateOrder(sampleBookingRequest);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toMatch(/checkin_code|otp/i);
+    for (const point of body.points) {
+      expect(point).not.toHaveProperty("checkin_code");
+    }
+  });
+
   it("maps successful create-order to BOOKED result", () => {
     const result = mapBorzoOrderToBookingResult({
       response: successfulBorzoCreateOrderResponse,
@@ -108,8 +117,6 @@ describe("Borzo operational mapper", () => {
 
   it("parses numeric Borzo order ids", () => {
     expect(parseBorzoOrderId("1250100")).toBe(1250100);
-    expect(() => parseBorzoOrderId("not-a-number")).toThrow(
-      "Invalid Borzo order id.",
-    );
+    expect(() => parseBorzoOrderId("not-a-number")).toThrow("Invalid Borzo order id.");
   });
 });

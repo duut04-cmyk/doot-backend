@@ -152,15 +152,11 @@ export class AuthService {
       otp,
     });
 
-    logger.info(
-      { userId, emailDomain: emailDomain(email) },
-      "verification email sent",
-    );
+    logger.info({ userId, emailDomain: emailDomain(email) }, "verification email sent");
 
     return {
       success: true,
-      message:
-        "Account created. Please check your email for the verification code.",
+      message: "Account created. Please check your email for the verification code.",
     };
   }
 
@@ -209,9 +205,7 @@ export class AuthService {
 
     const matches = await verifyOtpHash(otp, record.otpHash);
     if (!matches) {
-      const updated = await this.repository.incrementVerificationOtpAttempts(
-        record.id,
-      );
+      const updated = await this.repository.incrementVerificationOtpAttempts(record.id);
       if (updated.attempts >= MAX_OTP_ATTEMPTS) {
         await this.repository.markVerificationOtpUsed(record.id);
         logger.info(
@@ -276,13 +270,10 @@ export class AuthService {
     if (latest) {
       const elapsedMs = Date.now() - latest.createdAt.getTime();
       if (elapsedMs < OTP_RESEND_COOLDOWN_SECONDS * 1000) {
-        throw new AppError(
-          "Please wait before requesting another verification code",
-          {
-            statusCode: 429,
-            code: ErrorCodes.OTP_RESEND_COOLDOWN,
-          },
-        );
+        throw new AppError("Please wait before requesting another verification code", {
+          statusCode: 429,
+          code: ErrorCodes.OTP_RESEND_COOLDOWN,
+        });
       }
     }
 
@@ -324,15 +315,9 @@ export class AuthService {
       });
     }
 
-    const passwordMatches = await verifyPassword(
-      input.password,
-      user.passwordHash,
-    );
+    const passwordMatches = await verifyPassword(input.password, user.passwordHash);
     if (!passwordMatches) {
-      logger.info(
-        { userId: user.id, emailDomain: emailDomain(email) },
-        "login_failed",
-      );
+      logger.info({ userId: user.id, emailDomain: emailDomain(email) }, "login_failed");
       throw new AppError(GENERIC_CREDENTIALS_ERROR, {
         statusCode: 401,
         code: ErrorCodes.INVALID_CREDENTIALS,
@@ -352,9 +337,7 @@ export class AuthService {
   }
 
   async googleLogin(input: GoogleLoginInput): Promise<LoginResult> {
-    const identity = await this.googleVerifier.verifyIdToken(
-      input.credential.trim(),
-    );
+    const identity = await this.googleVerifier.verifyIdToken(input.credential.trim());
     const email = normalizeEmail(identity.email);
     const providerAccountId = identity.sub;
 
@@ -377,9 +360,16 @@ export class AuthService {
     if (existingUser) {
       this.assertLoginAccountStatus(existingUser.status);
 
+      let linkedUser = existingUser;
+      if (!existingUser.emailVerified) {
+        linkedUser = await this.repository.updateUser(existingUser.id, {
+          emailVerified: true,
+        });
+      }
+
       try {
         await this.repository.createOAuthAccount({
-          userId: existingUser.id,
+          userId: linkedUser.id,
           provider: "GOOGLE",
           providerAccountId,
         });
@@ -403,11 +393,10 @@ export class AuthService {
         return this.issueSession(raced.user, "Login successful.");
       }
 
-      return this.issueSession(existingUser, "Login successful.");
+      return this.issueSession(linkedUser, "Login successful.");
     }
 
-    const displayName =
-      identity.name?.trim() || email.split("@")[0] || "Dutt User";
+    const displayName = identity.name?.trim() || email.split("@")[0] || "Dutt User";
 
     let createdUser: User;
     try {
@@ -464,11 +453,7 @@ export class AuthService {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.repository.findRefreshTokenByHash(tokenHash);
 
-    if (
-      !existing ||
-      existing.revokedAt ||
-      existing.expiresAt.getTime() <= Date.now()
-    ) {
+    if (!existing || existing.revokedAt || existing.expiresAt.getTime() <= Date.now()) {
       logger.info("refresh_failed");
       throw new AppError(GENERIC_REFRESH_ERROR, {
         statusCode: 401,
@@ -553,10 +538,7 @@ export class AuthService {
 
   async forgotPassword(input: ForgotPasswordInput): Promise<AuthMessageResult> {
     const email = normalizeEmail(input.email);
-    logger.info(
-      { emailDomain: emailDomain(email) },
-      "password_reset_requested",
-    );
+    logger.info({ emailDomain: emailDomain(email) }, "password_reset_requested");
 
     const genericSuccess: AuthMessageResult = {
       success: true,
@@ -580,10 +562,7 @@ export class AuthService {
 
     const user = await this.repository.findUserByEmail(email);
     if (!this.isPasswordResetEligible(user)) {
-      logger.info(
-        { emailDomain: emailDomain(email) },
-        "password_reset_otp_failed",
-      );
+      logger.info({ emailDomain: emailDomain(email) }, "password_reset_otp_failed");
       throw new AppError(GENERIC_PASSWORD_RESET_OTP_ERROR, {
         statusCode: 400,
         code: ErrorCodes.PASSWORD_RESET_OTP_INVALID,
@@ -639,17 +618,11 @@ export class AuthService {
     const expiresAt = buildPasswordResetVerificationTokenExpiry();
 
     const consumed = await this.repository.withTransaction(async (tx) => {
-      const claimed = await this.repository.consumePasswordResetOtp(
-        record.id,
-        tx,
-      );
+      const claimed = await this.repository.consumePasswordResetOtp(record.id, tx);
       if (!claimed) {
         return null;
       }
-      await this.repository.invalidatePasswordResetVerificationTokens(
-        user.id,
-        tx,
-      );
+      await this.repository.invalidatePasswordResetVerificationTokens(user.id, tx);
       await this.repository.createPasswordResetVerificationToken(
         {
           userId: user.id,
@@ -703,13 +676,10 @@ export class AuthService {
     if (latest) {
       const elapsedMs = Date.now() - latest.createdAt.getTime();
       if (elapsedMs < OTP_GENERATION_COOLDOWN_SECONDS * 1000) {
-        throw new AppError(
-          "Please wait before requesting another verification code",
-          {
-            statusCode: 429,
-            code: ErrorCodes.PASSWORD_RESET_OTP_COOLDOWN,
-          },
-        );
+        throw new AppError("Please wait before requesting another verification code", {
+          statusCode: 429,
+          code: ErrorCodes.PASSWORD_RESET_OTP_COOLDOWN,
+        });
       }
     }
 
@@ -768,10 +738,7 @@ export class AuthService {
     }
 
     if (user.passwordHash) {
-      const sameAsCurrent = await verifyPassword(
-        input.newPassword,
-        user.passwordHash,
-      );
+      const sameAsCurrent = await verifyPassword(input.newPassword, user.passwordHash);
       if (sameAsCurrent) {
         throw new AppError(
           "New password must be different from your current password.",
@@ -786,16 +753,11 @@ export class AuthService {
     const passwordHash = await hashPassword(input.newPassword);
 
     const marked = await this.repository.withTransaction(async (tx) => {
-      const current =
-        await this.repository.findPasswordResetVerificationTokenByHash(
-          tokenHash,
-          tx,
-        );
-      if (
-        !current ||
-        current.usedAt ||
-        current.expiresAt.getTime() <= Date.now()
-      ) {
+      const current = await this.repository.findPasswordResetVerificationTokenByHash(
+        tokenHash,
+        tx,
+      );
+      if (!current || current.usedAt || current.expiresAt.getTime() <= Date.now()) {
         return null;
       }
 
@@ -827,10 +789,7 @@ export class AuthService {
     };
   }
 
-  private async issueSession(
-    user: User,
-    message: string,
-  ): Promise<LoginResult> {
+  private async issueSession(user: User, message: string): Promise<LoginResult> {
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken();
     const tokenHash = hashRefreshToken(refreshToken);
@@ -881,9 +840,7 @@ export class AuthService {
   }
 
   private buildOtpExpiry(from: Date = new Date()): Date {
-    return new Date(
-      from.getTime() + EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES * 60 * 1000,
-    );
+    return new Date(from.getTime() + EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES * 60 * 1000);
   }
 
   private buildPasswordResetOtpExpiry(from: Date = new Date()): Date {
@@ -893,11 +850,7 @@ export class AuthService {
   private isPasswordResetEligible(
     user: User | null,
   ): user is User & { passwordHash: string } {
-    return !!(
-      user &&
-      user.passwordHash &&
-      user.status === "ACTIVE"
-    );
+    return !!(user && user.passwordHash && user.status === "ACTIVE");
   }
 
   private async issuePasswordResetOtp(user: User, email: string): Promise<void> {

@@ -33,8 +33,14 @@ export const operationalSwaggerPaths = {
       parameters: [deliveryIdParam],
       responses: {
         200: { description: "Driver assignment snapshot" },
-        401: { description: "Unauthorized", content: { "application/json": { schema: operationalErrorSchema } } },
-        404: { description: "Delivery not found", content: { "application/json": { schema: operationalErrorSchema } } },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        404: {
+          description: "Delivery not found",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
       },
     },
   },
@@ -69,12 +75,17 @@ export const operationalSwaggerPaths = {
       tags: ["Deliveries"],
       summary: "Generate pickup OTP",
       description:
-        "Generates a pickup verification code, emails it to the delivery owner, and moves eligible deliveries to PICKUP_OTP_PENDING. The OTP is never returned in the API response.",
+        "Generates a pickup verification code, emails it to the delivery owner, and when MSG91 is enabled also sends an SMS to the customer's phone. Eligible deliveries move to PICKUP_OTP_PENDING. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
-        200: { description: "Pickup OTP generated and emailed to the customer" },
-        503: { description: "Pickup OTP email delivery failed" },
+        200: {
+          description:
+            "Pickup OTP generated; email sent and SMS sent when MSG91 is enabled and the customer has a phone number",
+        },
+        503: {
+          description: "Pickup OTP notification failed (email or SMS delivery failure)",
+        },
         422: { description: "OTP not allowed for current status" },
         429: { description: "OTP generation cooldown" },
       },
@@ -109,12 +120,18 @@ export const operationalSwaggerPaths = {
       tags: ["Deliveries"],
       summary: "Generate delivery OTP",
       description:
-        "Generates a delivery verification code, emails it to the delivery owner, and moves eligible deliveries to DELIVERY_OTP_PENDING. The OTP is never returned in the API response.",
+        "Generates a delivery verification code, emails it to the delivery owner, and when MSG91 is enabled also sends an SMS to the customer's phone. Eligible deliveries move to DELIVERY_OTP_PENDING. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
-        200: { description: "Delivery OTP generated and emailed to the customer" },
-        503: { description: "Delivery OTP email delivery failed" },
+        200: {
+          description:
+            "Delivery OTP generated; email sent and SMS sent when MSG91 is enabled and the customer has a phone number",
+        },
+        503: {
+          description:
+            "Delivery OTP notification failed (email or SMS delivery failure)",
+        },
         422: { description: "OTP not allowed for current status" },
         429: { description: "OTP generation cooldown" },
       },
@@ -225,6 +242,75 @@ export const operationalSwaggerPaths = {
       },
     },
   },
+  "/api/v1/admin/deliveries/{id}/driver": {
+    get: {
+      tags: ["Admin Deliveries"],
+      summary: "Get driver assignment (admin)",
+      description: "Requires ADMIN role. Returns driver assignment for any delivery.",
+      security: bearerSecurity,
+      parameters: [deliveryIdParam],
+      responses: {
+        200: { description: "Driver assignment snapshot" },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        403: { description: "Forbidden — ADMIN role required" },
+        404: {
+          description: "Delivery not found",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+      },
+    },
+  },
+  "/api/v1/admin/deliveries/{id}/tracking": {
+    get: {
+      tags: ["Admin Deliveries"],
+      summary: "Get latest tracking (admin)",
+      description:
+        "Requires ADMIN role. Returns latest tracking snapshot for any delivery.",
+      security: bearerSecurity,
+      parameters: [deliveryIdParam],
+      responses: {
+        200: { description: "Latest tracking point" },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        403: { description: "Forbidden — ADMIN role required" },
+        404: {
+          description: "Delivery not found",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+      },
+    },
+  },
+  "/api/v1/admin/deliveries/{id}/tracking/history": {
+    get: {
+      tags: ["Admin Deliveries"],
+      summary: "List tracking history (admin)",
+      description:
+        "Requires ADMIN role. Returns paginated tracking history for any delivery.",
+      security: bearerSecurity,
+      parameters: [
+        deliveryIdParam,
+        { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+      ],
+      responses: {
+        200: { description: "Paginated tracking history" },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+        403: { description: "Forbidden — ADMIN role required" },
+        404: {
+          description: "Delivery not found",
+          content: { "application/json": { schema: operationalErrorSchema } },
+        },
+      },
+    },
+  },
 } as const;
 
 const simulateDriverRequestExample = {
@@ -274,7 +360,11 @@ export const driverSimulationSwaggerPaths = {
                   enum: ["BIKE", "SCOOTER", "CAR", "VAN", "TRUCK"],
                   example: "BIKE",
                 },
-                vehicleNumber: { type: "string", nullable: true, example: "PB10AB1234" },
+                vehicleNumber: {
+                  type: "string",
+                  nullable: true,
+                  example: "PB10AB1234",
+                },
               },
               required: ["status", "providerDriverId"],
             },
@@ -284,7 +374,8 @@ export const driverSimulationSwaggerPaths = {
       },
       responses: {
         200: {
-          description: "Simulated driver assignment persisted; delivery may transition to DRIVER_ASSIGNED",
+          description:
+            "Simulated driver assignment persisted; delivery may transition to DRIVER_ASSIGNED",
           content: {
             "application/json": {
               schema: {

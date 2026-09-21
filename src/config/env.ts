@@ -1,7 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
-loadDotenv();
+loadDotenv({ override: false });
 
 const emptyToUndefined = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -13,36 +13,21 @@ const emptyToUndefined = (value: unknown) =>
  */
 const envSchema = z
   .object({
-    NODE_ENV: z
-      .enum(["development", "test", "production"])
-      .default("development"),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().positive().default(5000),
-    APP_NAME: z.preprocess(
-      emptyToUndefined,
-      z.string().min(1).default("Doot"),
-    ),
+    APP_NAME: z.preprocess(emptyToUndefined, z.string().min(1).default("Doot")),
 
     DATABASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
     DIRECT_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 
-    JWT_ACCESS_SECRET: z.preprocess(
-      emptyToUndefined,
-      z.string().min(32).optional(),
-    ),
+    JWT_ACCESS_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
     JWT_ACCESS_EXPIRES_IN: z.preprocess(
       emptyToUndefined,
       z.string().min(1).default("15m"),
     ),
     // Reserved for future JWT refresh strategy; Part 2 uses opaque refresh tokens.
-    JWT_REFRESH_SECRET: z.preprocess(
-      emptyToUndefined,
-      z.string().min(1).optional(),
-    ),
-    REFRESH_TOKEN_EXPIRES_IN_DAYS: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(30),
+    JWT_REFRESH_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    REFRESH_TOKEN_EXPIRES_IN_DAYS: z.coerce.number().int().positive().default(30),
     PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS: z.coerce
       .number()
       .int()
@@ -50,28 +35,16 @@ const envSchema = z
       .default(600),
 
     RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-    RESEND_FROM_EMAIL: z.preprocess(
-      emptyToUndefined,
-      z.string().email().optional(),
-    ),
+    RESEND_FROM_EMAIL: z.preprocess(emptyToUndefined, z.string().email().optional()),
     EMAIL_FROM: z.preprocess(emptyToUndefined, z.string().email().optional()),
 
     BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
-    GOOGLE_CLIENT_ID: z.preprocess(
-      emptyToUndefined,
-      z.string().min(1).optional(),
-    ),
-    GOOGLE_CLIENT_SECRET: z.preprocess(
-      emptyToUndefined,
-      z.string().min(1).optional(),
-    ),
+    GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
     FRONTEND_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
-    ADMIN_FRONTEND_URL: z.preprocess(
-      emptyToUndefined,
-      z.string().url().optional(),
-    ),
+    ADMIN_FRONTEND_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 
     // Optional bootstrap admin credentials for prisma seed only.
     ADMIN_EMAIL: z.preprocess(emptyToUndefined, z.string().email().optional()),
@@ -112,25 +85,48 @@ const envSchema = z
       z.string().min(16).optional(),
     ),
 
-    BOOKING_QUOTE_MAX_AGE_SECONDS: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(300),
+    BOOKING_QUOTE_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
 
-    BOOKING_PRICE_TOLERANCE_PERCENT: z.coerce
-      .number()
-      .min(0)
-      .max(100)
-      .default(0),
+    BOOKING_PRICE_TOLERANCE_PERCENT: z.coerce.number().min(0).max(100).default(0),
 
     OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(600),
     OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
-    OTP_GENERATION_COOLDOWN_SECONDS: z.coerce
-      .number()
-      .int()
-      .nonnegative()
-      .default(60),
+    OTP_GENERATION_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(60),
+
+    MSG91_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    MSG91_AUTH_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    MSG91_SENDER_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    MSG91_ACCOUNT_OTP_TEMPLATE_ID: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    MSG91_PICKUP_OTP_TEMPLATE_ID: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    MSG91_DELIVERY_OTP_TEMPLATE_ID: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    /** @deprecated Use MSG91_PICKUP_OTP_TEMPLATE_ID */
+    MSG91_PICKUP_OTP_FLOW_ID: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    /** @deprecated Use MSG91_DELIVERY_OTP_TEMPLATE_ID */
+    MSG91_DELIVERY_OTP_FLOW_ID: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    MSG91_API_BASE_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().default("https://api.msg91.com/api/v5"),
+    ),
+    MSG91_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "test" && !data.JWT_ACCESS_SECRET) {
@@ -153,6 +149,31 @@ const envSchema = z
         message:
           "BORZO_CALLBACK_SECRET is required when BORZO_WEBHOOKS_ENABLED is true",
       });
+    }
+
+    if (data.MSG91_ENABLED && data.NODE_ENV !== "test") {
+      const pickupTemplateId =
+        data.MSG91_PICKUP_OTP_TEMPLATE_ID ?? data.MSG91_PICKUP_OTP_FLOW_ID;
+      const deliveryTemplateId =
+        data.MSG91_DELIVERY_OTP_TEMPLATE_ID ?? data.MSG91_DELIVERY_OTP_FLOW_ID;
+
+      const requiredMsg91Fields = [
+        ["MSG91_AUTH_KEY", data.MSG91_AUTH_KEY],
+        ["MSG91_SENDER_ID", data.MSG91_SENDER_ID],
+        ["MSG91_PICKUP_OTP_TEMPLATE_ID", pickupTemplateId],
+        ["MSG91_DELIVERY_OTP_TEMPLATE_ID", deliveryTemplateId],
+        ["MSG91_API_BASE_URL", data.MSG91_API_BASE_URL],
+      ] as const;
+
+      for (const [field, value] of requiredMsg91Fields) {
+        if (!value) {
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: `${field} is required when MSG91_ENABLED is true`,
+          });
+        }
+      }
     }
   });
 
@@ -222,16 +243,41 @@ export function requireBorzoCallbackSecret(): string {
   return secret;
 }
 
-export const DEFAULT_BOOKING_QUOTE_MAX_AGE_SECONDS =
-  env.BOOKING_QUOTE_MAX_AGE_SECONDS;
+export const DEFAULT_BOOKING_QUOTE_MAX_AGE_SECONDS = env.BOOKING_QUOTE_MAX_AGE_SECONDS;
 
 export const DEFAULT_BOOKING_PRICE_TOLERANCE_PERCENT =
   env.BOOKING_PRICE_TOLERANCE_PERCENT;
 
 export const OTP_EXPIRY_SECONDS = env.OTP_EXPIRY_SECONDS;
 export const OTP_MAX_ATTEMPTS = env.OTP_MAX_ATTEMPTS;
-export const OTP_GENERATION_COOLDOWN_SECONDS =
-  env.OTP_GENERATION_COOLDOWN_SECONDS;
+export const OTP_GENERATION_COOLDOWN_SECONDS = env.OTP_GENERATION_COOLDOWN_SECONDS;
 
 export const PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS =
   env.PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS;
+
+export function getMsg91AccountTemplateId(): string | undefined {
+  return env.MSG91_ACCOUNT_OTP_TEMPLATE_ID;
+}
+
+export function getMsg91PickupTemplateId(): string | undefined {
+  return env.MSG91_PICKUP_OTP_TEMPLATE_ID ?? env.MSG91_PICKUP_OTP_FLOW_ID;
+}
+
+export function getMsg91DeliveryTemplateId(): string | undefined {
+  return env.MSG91_DELIVERY_OTP_TEMPLATE_ID ?? env.MSG91_DELIVERY_OTP_FLOW_ID;
+}
+
+/** True when pickup/delivery OTP SMS can be sent. */
+export function isMsg91Configured(): boolean {
+  return Boolean(
+    env.MSG91_AUTH_KEY &&
+    env.MSG91_SENDER_ID &&
+    getMsg91PickupTemplateId() &&
+    getMsg91DeliveryTemplateId() &&
+    env.MSG91_API_BASE_URL,
+  );
+}
+
+export function isMsg91AccountTemplateConfigured(): boolean {
+  return Boolean(getMsg91AccountTemplateId());
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AppError } from "../src/core/errors/app-error.js";
 import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import {
+  normalizePhoneForMsg91,
   parseAndValidatePhone,
   phoneFromE164,
   phoneFromProviderDigits,
@@ -73,5 +74,15 @@ describe("phone utilities", () => {
 
   it("normalizes country codes without plus prefix", () => {
     expect(parseAndValidatePhone("91", "9876543210").countryCode).toBe("+91");
+  });
+
+  it("normalizes Indian phone numbers for MSG91", () => {
+    expect(normalizePhoneForMsg91("9876543210")).toBe("919876543210");
+    expect(normalizePhoneForMsg91("+919876543210")).toBe("919876543210");
+    expect(normalizePhoneForMsg91("919876543210")).toBe("919876543210");
+  });
+
+  it("rejects invalid MSG91 phone input", () => {
+    expect(() => normalizePhoneForMsg91("123")).toThrow(AppError);
   });
 });

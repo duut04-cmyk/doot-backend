@@ -1,7 +1,4 @@
-import {
-  parsePhoneNumberFromString,
-  type CountryCode,
-} from "libphonenumber-js";
+import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import { AppError } from "../errors/app-error.js";
 import { ErrorCodes } from "../errors/error-codes.js";
 import type { PhoneNumberValue, PhoneResponse, StoredPhone } from "./phone.types.js";
@@ -144,4 +141,43 @@ export function isCompleteStoredPhone(
   number: string | null | undefined,
 ): countryCode is string {
   return Boolean(countryCode && number);
+}
+
+/** Normalize loose Indian phone input for MSG91 (`919876543210`, no plus prefix). */
+export function normalizePhoneForMsg91(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new AppError(INVALID_PHONE_MESSAGE, {
+      statusCode: 400,
+      code: ErrorCodes.INVALID_PHONE,
+    });
+  }
+
+  const candidates = [
+    trimmed.startsWith("+") ? trimmed : `+${trimmed}`,
+    `+${trimmed.replace(/\D/g, "")}`,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = phoneFromE164(candidate, "IN");
+    if (parsed) {
+      return parsed.e164.replace(/^\+/, "");
+    }
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  const fromProvider = phoneFromProviderDigits(digits, "IN");
+  if (fromProvider) {
+    return fromProvider.e164.replace(/^\+/, "");
+  }
+
+  const national = tryParseAndValidatePhone("+91", digits);
+  if (national) {
+    return national.e164.replace(/^\+/, "");
+  }
+
+  throw new AppError(INVALID_PHONE_MESSAGE, {
+    statusCode: 400,
+    code: ErrorCodes.INVALID_PHONE,
+  });
 }

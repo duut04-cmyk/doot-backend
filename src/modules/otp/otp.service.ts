@@ -7,10 +7,7 @@ import {
 } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
-import {
-  authRepository,
-  type IAuthRepository,
-} from "../auth/auth.repository.js";
+import { authRepository, type IAuthRepository } from "../auth/auth.repository.js";
 import {
   generateEmailVerificationOtp,
   hashOtp,
@@ -20,6 +17,13 @@ import {
   emailService,
   type EmailSender,
 } from "../../infrastructure/email/email.service.js";
+import { buildOtpSmsTemplateVariables } from "../../infrastructure/sms/sms.mapper.js";
+import { smsService, type SmsSender } from "../../infrastructure/sms/sms.service.js";
+import { toPhoneResponse } from "../../core/phone/phone.js";
+import {
+  driverRepository,
+  type IDriverRepository,
+} from "../driver/driver.repository.js";
 import { loadAuthorizedDelivery } from "../delivery/delivery-access.js";
 import {
   deliveryRepository,
@@ -51,6 +55,8 @@ export class OtpService {
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
     private readonly authRepo: IAuthRepository = authRepository,
     private readonly mailer: EmailSender = emailService,
+    private readonly sms: SmsSender = smsService,
+    private readonly driverRepo: IDriverRepository = driverRepository,
   ) {}
 
   async generatePickupOtp(input: {
@@ -101,10 +107,15 @@ export class OtpService {
       otp: code,
     });
 
-    if (
-      delivery.status === "DRIVER_ASSIGNED" ||
-      delivery.status === "BOOKED"
-    ) {
+    await this.sendPickupOtpSmsIfEnabled({
+      customer,
+      deliveryId: input.deliveryId,
+      deliveryReference: delivery.reference,
+      otp: code,
+      requestId: input.requestId,
+    });
+
+    if (delivery.status === "DRIVER_ASSIGNED" || delivery.status === "BOOKED") {
       await this.lifecycle.transition({
         deliveryId: input.deliveryId,
         currentStatus: delivery.status,
@@ -221,6 +232,14 @@ export class OtpService {
       otp: code,
     });
 
+    await this.sendDeliveryOtpSmsIfEnabled({
+      customer,
+      deliveryId: input.deliveryId,
+      deliveryReference: delivery.reference,
+      otp: code,
+      requestId: input.requestId,
+    });
+
     if (delivery.status === "IN_TRANSIT") {
       await this.lifecycle.transition({
         deliveryId: input.deliveryId,
@@ -294,10 +313,101 @@ export class OtpService {
     };
   }
 
-  private async ensureGenerationAllowed(
-    deliveryId: string,
-    type: DeliveryOtpType,
-  ) {
+  private async sendPickupOtpSmsIfEnabled(input: {
+    customer: {
+      phoneCountryCode: string | null;
+      phoneNumber: string | null;
+    };
+    deliveryId: string;
+    deliveryReference: string;
+    otp: string;
+    requestId: string;
+  }) {
+    if (!this.sms.isEnabled() || !this.sms.canSendToCustomer(input.customer)) {
+      return;
+    }
+
+    const phone = toPhoneResponse(
+      input.customer.phoneCountryCode,
+      input.customer.phoneNumber,
+    );
+    if (!phone) {
+      return;
+    }
+
+    const driverAssignment = await this.driverRepo.findLatestByDeliveryId(
+      input.deliveryId,
+    );
+    const templateVariables = buildOtpSmsTemplateVariables({
+      eventType: "PICKUP",
+      otp: input.otp,
+      deliveryReference: input.deliveryReference,
+      driverAssignment,
+    });
+
+    await this.sms.sendPickupOtpSms({
+      recipientMobile: phone.e164.replace(/^\+/, ""),
+      deliveryReference: input.deliveryReference,
+      otp: input.otp,
+      correlationId: input.requestId,
+      templateVariables: {
+        driver_name: templateVariables.driver_name,
+        vehicle_type: templateVariables.vehicle_type,
+        vehicle_number: templateVariables.vehicle_number,
+        driver_phone_masked: templateVariables.driver_phone_masked,
+        event_type: templateVariables.event_type,
+      },
+    });
+  }
+
+  private async sendDeliveryOtpSmsIfEnabled(input: {
+    customer: {
+      phoneCountryCode: string | null;
+      phoneNumber: string | null;
+    };
+    deliveryId: string;
+    deliveryReference: string;
+    otp: string;
+    requestId: string;
+  }) {
+    if (!this.sms.isEnabled() || !this.sms.canSendToCustomer(input.customer)) {
+      return;
+    }
+
+    const phone = toPhoneResponse(
+      input.customer.phoneCountryCode,
+      input.customer.phoneNumber,
+    );
+    if (!phone) {
+      return;
+    }
+
+    const driverAssignment = await this.driverRepo.findLatestByDeliveryId(
+      input.deliveryId,
+    );
+    const templateVariables = buildOtpSmsTemplateVariables({
+      eventType: "DELIVERY",
+      otp: input.otp,
+      deliveryReference: input.deliveryReference,
+      driverAssignment,
+    });
+
+    await this.sms.sendDeliveryOtpSms({
+      recipientMobile: phone.e164.replace(/^\+/, ""),
+      deliveryReference: input.deliveryReference,
+      otp: input.otp,
+      correlationId: input.requestId,
+      templateVariables: {
+        driver_name: templateVariables.driver_name,
+        vehicle_type: templateVariables.vehicle_type,
+        vehicle_number: templateVariables.vehicle_number,
+        driver_phone_masked: templateVariables.driver_phone_masked,
+        event_type: templateVariables.event_type,
+      },
+    });
+  }
+
+  private async ensureGenerationAllowed(deliveryId: string, type: DeliveryOtpType) {
     const active = await this.otpRepo.findActive(deliveryId, type);
     if (!active) {
       return;
@@ -334,10 +444,7 @@ export class OtpService {
     }
 
     if (record.expiresAt.getTime() < Date.now()) {
-      logger.info(
-        { deliveryId: input.deliveryId, type: input.type },
-        "otp.expired",
-      );
+      logger.info({ deliveryId: input.deliveryId, type: input.type }, "otp.expired");
       throw new AppError(GENERIC_OTP_ERROR, {
         statusCode: 422,
         code: ErrorCodes.OTP_EXPIRED,

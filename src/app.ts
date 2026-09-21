@@ -20,6 +20,8 @@ export function createApp(options?: {
   authController?: AuthController;
   deliveryController?: DeliveryController;
   borzoWebhookRouter?: ReturnType<typeof createBorzoWebhookRouter>;
+  /** When false, Swagger UI is not mounted (production default). */
+  exposeSwagger?: boolean;
 }) {
   const app = express();
 
@@ -52,8 +54,11 @@ export function createApp(options?: {
     );
   }
 
-  const openApiDocument = buildOpenApiDocument();
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  const exposeSwagger = options?.exposeSwagger ?? env.NODE_ENV !== "production";
+  if (exposeSwagger) {
+    const openApiDocument = buildOpenApiDocument();
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  }
 
   app.use(
     "/api/v1/providers/borzo",

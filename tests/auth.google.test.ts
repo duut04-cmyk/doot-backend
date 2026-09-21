@@ -92,14 +92,12 @@ describe("Auth Part 4 Google login", () => {
     expect(repository.users[0].status).toBe("ACTIVE");
     expect(repository.oauthAccounts).toHaveLength(1);
     expect(repository.oauthAccounts[0].provider).toBe("GOOGLE");
-    expect(repository.oauthAccounts[0].providerAccountId).toBe(
-      "google-sub-123",
-    );
+    expect(repository.oauthAccounts[0].providerAccountId).toBe("google-sub-123");
 
-    const decoded = jwt.verify(
-      result.data.accessToken,
-      requireJwtAccessSecret(),
-    ) as { sub: string; type: string };
+    const decoded = jwt.verify(result.data.accessToken, requireJwtAccessSecret()) as {
+      sub: string;
+      type: string;
+    };
     expect(decoded.sub).toBe(repository.users[0].id);
     expect(decoded.type).toBe(ACCESS_TOKEN_TYPE);
   });
@@ -112,6 +110,29 @@ describe("Auth Part 4 Google login", () => {
     expect(repository.users).toHaveLength(1);
     expect(repository.oauthAccounts).toHaveLength(1);
     expect(repository.refreshTokens).toHaveLength(2);
+  });
+
+  it("marks email verified when linking Google to an unverified password user", async () => {
+    await service.signup({
+      name: "John Smith",
+      email: "john@example.com",
+      password: "StrongPassword123!",
+    });
+    expect(repository.users[0].emailVerified).toBe(false);
+
+    mockGoogleIdentity({ email: "john@example.com" });
+    const googleLogin = await service.googleLogin({
+      credential: "google-id-token",
+    });
+
+    expect(googleLogin.success).toBe(true);
+    expect(repository.users[0].emailVerified).toBe(true);
+
+    const passwordLogin = await service.login({
+      email: "john@example.com",
+      password: "StrongPassword123!",
+    });
+    expect(passwordLogin.success).toBe(true);
   });
 
   it("links Google to an existing password user and preserves password login", async () => {
@@ -150,9 +171,9 @@ describe("Auth Part 4 Google login", () => {
     await service.googleLogin({ credential: "token" });
     repository.users[0].status = "SUSPENDED";
 
-    await expect(
-      service.googleLogin({ credential: "token" }),
-    ).rejects.toMatchObject({ code: ErrorCodes.ACCOUNT_SUSPENDED });
+    await expect(service.googleLogin({ credential: "token" })).rejects.toMatchObject({
+      code: ErrorCodes.ACCOUNT_SUSPENDED,
+    });
 
     mockGoogleIdentity({ email: "deleted@example.com", sub: "sub-d" });
     await service.googleLogin({ credential: "token-d" });
@@ -161,9 +182,9 @@ describe("Auth Part 4 Google login", () => {
     )!;
     deleted.status = "DELETED";
 
-    await expect(
-      service.googleLogin({ credential: "token-d" }),
-    ).rejects.toMatchObject({ code: ErrorCodes.ACCOUNT_DELETED });
+    await expect(service.googleLogin({ credential: "token-d" })).rejects.toMatchObject({
+      code: ErrorCodes.ACCOUNT_DELETED,
+    });
   });
 
   it("keeps Google-only users without a password hash", async () => {
@@ -180,9 +201,7 @@ describe("Auth Part 4 Google login", () => {
       }),
     );
 
-    await expect(
-      service.googleLogin({ credential: "token" }),
-    ).rejects.toMatchObject({
+    await expect(service.googleLogin({ credential: "token" })).rejects.toMatchObject({
       code: ErrorCodes.INVALID_GOOGLE_CREDENTIAL,
     });
     expect(repository.users).toHaveLength(0);

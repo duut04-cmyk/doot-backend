@@ -27,9 +27,7 @@ describe("Borzo adapter registration", () => {
     const registry = new ProviderAdapterRegistry();
     registry.register(new BorzoAdapter());
     expect(registry.has(BORZO_PROVIDER_CODE)).toBe(true);
-    expect(registry.resolve(BORZO_PROVIDER_CODE)?.metadata.providerCode).toBe(
-      "BORZO",
-    );
+    expect(registry.resolve(BORZO_PROVIDER_CODE)?.metadata.providerCode).toBe("BORZO");
   });
 
   it("resolver finds BORZO when configured", async () => {
@@ -51,9 +49,8 @@ describe("Borzo adapter registration", () => {
   });
 
   it("keeps MOCK adapter working independently", async () => {
-    const { MockProviderAdapter } = await import(
-      "../src/modules/provider/adapters/mock/mock-provider.adapter.js"
-    );
+    const { MockProviderAdapter } =
+      await import("../src/modules/provider/adapters/mock/mock-provider.adapter.js");
     const repo = new InMemoryProviderRepository();
     await seedMockProvider(repo, { integrationStatus: "READY" });
     const registry = new ProviderAdapterRegistry();
@@ -129,9 +126,7 @@ describe("Borzo adapter execution", () => {
   });
 
   it("executes createBooking via create-order", async () => {
-    const createOrder = vi
-      .fn()
-      .mockResolvedValue(successfulBorzoCreateOrderResponse);
+    const createOrder = vi.fn().mockResolvedValue(successfulBorzoCreateOrderResponse);
     const adapter = new BorzoAdapter({
       createOrder,
       ping: vi.fn(),
@@ -170,9 +165,7 @@ describe("Borzo adapter execution", () => {
   });
 
   it("executes cancelBooking via cancel-order", async () => {
-    const cancelOrder = vi
-      .fn()
-      .mockResolvedValue(successfulBorzoCancelOrderResponse);
+    const cancelOrder = vi.fn().mockResolvedValue(successfulBorzoCancelOrderResponse);
     const adapter = new BorzoAdapter({
       cancelOrder,
       ping: vi.fn(),
@@ -202,5 +195,14 @@ describe("Borzo adapter execution", () => {
       ]),
     );
     expect(adapter.supportsOperation("createBooking")).toBe(true);
+  });
+
+  it("does not advertise OTP as a provider capability or operation", () => {
+    const adapter = new BorzoAdapter();
+    expect(adapter.metadata.supportedCapabilities).not.toContain("OTP");
+    expect(adapter.metadata.supportedOperations).not.toEqual(
+      expect.arrayContaining(["sendOtp", "verifyOtp"]),
+    );
+    expect(adapter.supportsOperation("parseWebhook")).toBe(true);
   });
 });
