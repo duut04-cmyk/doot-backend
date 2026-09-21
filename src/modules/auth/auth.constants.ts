@@ -18,7 +18,7 @@ export const DEFAULT_JWT_ACCESS_EXPIRES_IN = "15m";
 /** Default refresh-token lifetime in days when env is unset. */
 export const DEFAULT_REFRESH_TOKEN_EXPIRES_IN_DAYS = 30;
 
-/** Default password-reset token lifetime in minutes. */
-export const PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 15;
+/** Default post-OTP password-reset verification token lifetime in seconds. */
+export const DEFAULT_PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS = 600;
 
 export const ACCESS_TOKEN_TYPE = "access" as const;

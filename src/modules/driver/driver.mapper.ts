@@ -1,4 +1,5 @@
 import type { UserRole } from "@prisma/client";
+import { toPhoneResponse } from "../../core/phone/phone.js";
 import type { CustomerDriverResponse, DriverAssignmentDto } from "./driver.types.js";
 
 export function toCustomerDriverResponse(
@@ -27,7 +28,10 @@ export function toCustomerDriverResponse(
     status: assignment.status,
     driver: {
       name: assignment.driverName,
-      phone: assignment.driverPhone,
+      phone: toPhoneResponse(
+        assignment.driverPhoneCountryCode,
+        assignment.driverPhoneNumber,
+      ),
       photoUrl: assignment.driverPhotoUrl,
       vehicleType: assignment.vehicleType,
       vehicleNumber: assignment.vehicleNumber,

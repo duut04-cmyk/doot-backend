@@ -11,6 +11,20 @@ import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
+import { knownFixedFeeCancellationPolicy } from "./helpers/cancellation-policy-test-helpers.js";
+import { phoneValue } from "./helpers/phone-test-helpers.js";
+
+function configureExecuteMock(
+  executeMock: ReturnType<typeof vi.fn>,
+  handler: (input: { operation: string }) => Promise<unknown>,
+) {
+  executeMock.mockImplementation(async (input: { operation: string }) => {
+    if (input.operation === "getCancellationPolicy") {
+      return knownFixedFeeCancellationPolicy();
+    }
+    return handler(input);
+  });
+}
 
 describe("BookingService", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -48,7 +62,7 @@ describe("BookingService", () => {
   }
 
   it("confirms OPTION_READY delivery and transitions to BOOKED", async () => {
-    executeMock.mockResolvedValue({
+    configureExecuteMock(executeMock, async () => ({
       success: true,
       outcome: "BOOKED",
       providerBookingId: "PO-100",
@@ -62,7 +76,7 @@ describe("BookingService", () => {
       service: null,
       reason: null,
       amount: { amount: 150, currency: "INR" },
-    });
+    }));
 
     const seeded = await seedOptionReadyDelivery({
       deliveryRepo,
@@ -82,8 +96,9 @@ describe("BookingService", () => {
     expect(result.data.delivery.status).toBe("BOOKED");
     expect(result.data.booking.status).toBe("BOOKED");
     expect(result.data.booking.providerReference).toBeTruthy();
-    expect(executeMock).toHaveBeenCalledTimes(1);
-    expect(executeMock.mock.calls[0]?.[0]?.operation).toBe("createBooking");
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    expect(executeMock.mock.calls[0]?.[0]?.operation).toBe("getCancellationPolicy");
+    expect(executeMock.mock.calls[1]?.[0]?.operation).toBe("createBooking");
 
     const delivery = await deliveryRepo.findById(seeded.deliveryId);
     expect(delivery?.status).toBe("BOOKED");
@@ -99,12 +114,12 @@ describe("BookingService", () => {
         pickup: {
           addressText: "Pickup",
           contactName: "A",
-          contactPhone: "+919876543210",
+          contactPhone: phoneValue("+91", "9876543210"),
         },
         drop: {
           addressText: "Drop",
           contactName: "B",
-          contactPhone: "+919811122233",
+          contactPhone: phoneValue("+91", "9811122233"),
         },
         package: {
           packageType: "FOOD",
@@ -190,12 +205,7 @@ describe("BookingService", () => {
   });
 
   it("marks booking UNKNOWN and keeps delivery BOOKING on provider timeout", async () => {
-    executeMock.mockRejectedValue(
-      Object.assign(new Error("timeout"), {
-        name: "ProviderAdapterError",
-      }),
-    );
-    executeMock.mockImplementation(async () => {
+    configureExecuteMock(executeMock, async () => {
       const { ProviderAdapterError } = await import(
         "../src/modules/provider/contracts/provider-error.js"
       );
@@ -283,7 +293,7 @@ describe("BookingService", () => {
   });
 
   it("returns 409 BOOKING_OPTION_CHANGED when requote price differs", async () => {
-    executeMock.mockImplementation(async (input: { operation: string }) => {
+    configureExecuteMock(executeMock, async (input) => {
       if (input.operation === "getQuote") {
         return {
           available: true,
@@ -324,7 +334,7 @@ describe("BookingService", () => {
   });
 
   it("stores idempotency and returns cached response on repeat", async () => {
-    executeMock.mockResolvedValue({
+    configureExecuteMock(executeMock, async () => ({
       success: true,
       outcome: "BOOKED",
       providerBookingId: "PO-IDEM",
@@ -338,7 +348,7 @@ describe("BookingService", () => {
       service: null,
       reason: null,
       amount: { amount: 150, currency: "INR" },
-    });
+    }));
 
     const seeded = await seedOptionReadyDelivery({
       deliveryRepo,
@@ -368,7 +378,35 @@ describe("BookingService", () => {
     });
 
     expect(cached.data.booking.status).toBe("BOOKED");
-    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 409 BOOKING_OPTION_CHANGED when cancellation policy changes", async () => {
+    executeMock.mockImplementation(async (input: { operation: string }) => {
+      if (input.operation === "getCancellationPolicy") {
+        return knownFixedFeeCancellationPolicy({
+          fee: { type: "FIXED", amount: 99, currency: "INR" },
+        });
+      }
+      throw new Error("createBooking should not be called");
+    });
+
+    const seeded = await seedOptionReadyDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      customerId,
+    });
+
+    await expect(
+      buildService().confirm({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-book-policy",
+        requestHash: hashConfirmRequest(),
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.BOOKING_OPTION_CHANGED });
   });
 
   it("hides cross-customer delivery with 404", async () => {

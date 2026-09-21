@@ -4,6 +4,10 @@ import type {
 } from "@prisma/client";
 import type { AvailabilityResult } from "../provider/contracts/availability.js";
 import type { NormalizedQuote } from "../provider/contracts/quote.js";
+import type {
+  CancellationPolicy,
+  CancellationPolicySnapshot,
+} from "../provider/contracts/cancellation-policy.js";
 import type { NormalizedServiceabilityResult } from "../provider/contracts/serviceability.js";
 
 export type ScoreBreakdown = {
@@ -31,6 +35,7 @@ export type ProviderEvaluationSignals = {
   serviceability: NormalizedServiceabilityResult | null;
   availability: AvailabilityResult | null;
   quote: NormalizedQuote | null;
+  cancellationPolicy: CancellationPolicy | null;
   compatibility: ProviderEvaluationCompatibility;
   warnings: string[];
   providerMetadata: Record<string, unknown>;
@@ -90,6 +95,7 @@ export type OrchestrationOptionDto = {
   quoteSnapshot: Record<string, unknown>;
   availabilitySnapshot: Record<string, unknown> | null;
   etaSnapshot: Record<string, unknown> | null;
+  cancellationPolicySnapshot: CancellationPolicySnapshot | null;
   createdAt: Date;
 };
 
@@ -123,6 +129,7 @@ export type CustomerSelectedOptionDto = {
     reason?: string | null;
   };
   selectionReason: string;
+  cancellationPolicy: CancellationPolicy;
 };
 
 export type CustomerOrchestrationResultDto = {
@@ -155,6 +162,7 @@ export type AdminEvaluationDto = {
   score: number | null;
   scoreBreakdown: ScoreBreakdown | null;
   errorCategory: string | null;
+  cancellationPolicy: CancellationPolicy | null;
 };
 
 export type AdminOrchestrationResultDto = CustomerOrchestrationResultDto & {

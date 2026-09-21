@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
@@ -47,29 +48,52 @@ export class DeliveryService {
 
     const normalized = this.normalizeCreateInput(input.body);
 
-    const created = await this.repository.withTransaction(async (tx) => {
-      const reference = await this.repository.nextReference(tx);
-      const delivery = await this.repository.createDelivery(
-        {
-          ...normalized,
-          customerId: input.customerId,
-          reference,
-        },
-        tx,
-      );
-      const dto = toDeliveryDetailDto(delivery);
-      await this.repository.saveIdempotency(
-        {
-          customerId: input.customerId,
-          key: input.idempotencyKey,
-          requestHash,
-          deliveryId: delivery.id,
-          responsePayload: dto,
-        },
-        tx,
-      );
-      return dto;
-    });
+    let created: Awaited<ReturnType<typeof toDeliveryDetailDto>>;
+    try {
+      created = await this.repository.withTransaction(async (tx) => {
+        const reference = await this.repository.nextReference(tx);
+        const delivery = await this.repository.createDelivery(
+          {
+            ...normalized,
+            customerId: input.customerId,
+            reference,
+          },
+          tx,
+        );
+        const dto = toDeliveryDetailDto(delivery);
+        await this.repository.saveIdempotency(
+          {
+            customerId: input.customerId,
+            key: input.idempotencyKey,
+            requestHash,
+            deliveryId: delivery.id,
+            responsePayload: dto,
+          },
+          tx,
+        );
+        return dto;
+      });
+    } catch (error) {
+      if (isDeliveryIdempotencyUniqueViolation(error)) {
+        const raced = await this.repository.findIdempotency(
+          input.customerId,
+          input.idempotencyKey,
+        );
+        if (raced?.requestHash === requestHash) {
+          return { success: true, data: raced.responsePayload };
+        }
+        if (raced) {
+          throw new AppError(
+            "Idempotency key was reused with a different request payload.",
+            {
+              statusCode: 409,
+              code: ErrorCodes.IDEMPOTENCY_CONFLICT,
+            },
+          );
+        }
+      }
+      throw error;
+    }
 
     logger.info(
       {
@@ -183,14 +207,20 @@ export class DeliveryService {
       pickup: {
         addressText: body.pickup.addressText,
         contactName: body.pickup.contactName,
-        contactPhone: body.pickup.contactPhone,
+        contactPhoneCountryCode: body.pickup.contactPhone.countryCode,
+        contactPhoneNumber: body.pickup.contactPhone.number,
         instructions: body.pickup.instructions ?? null,
+        latitude: body.pickup.latitude ?? null,
+        longitude: body.pickup.longitude ?? null,
       },
       drop: {
         addressText: body.drop.addressText,
         contactName: body.drop.contactName,
-        contactPhone: body.drop.contactPhone,
+        contactPhoneCountryCode: body.drop.contactPhone.countryCode,
+        contactPhoneNumber: body.drop.contactPhone.number,
         instructions: body.drop.instructions ?? null,
+        latitude: body.drop.latitude ?? null,
+        longitude: body.drop.longitude ?? null,
       },
       package: {
         packageType: body.package.packageType,
@@ -217,9 +247,22 @@ export class DeliveryService {
         windowStart,
         windowEnd,
       },
-      complianceAcceptedAt: new Date(),
+      compliance: {
+        accepted: true,
+        acceptedAt: new Date(),
+      },
     };
   }
+}
+
+function isDeliveryIdempotencyUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002" &&
+    Array.isArray(error.meta?.target) &&
+    (error.meta.target as string[]).includes("customerId") &&
+    (error.meta.target as string[]).includes("key")
+  );
 }
 
 export const deliveryService = new DeliveryService();

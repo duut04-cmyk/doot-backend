@@ -150,6 +150,7 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
     quoteSnapshot: Record<string, unknown>;
     availabilitySnapshot: Record<string, unknown> | null;
     etaSnapshot: Record<string, unknown> | null;
+    cancellationPolicySnapshot: Record<string, unknown> | null;
   }): Promise<OrchestrationOptionDto> {
     const option: OrchestrationOptionDto = {
       id: randomUUID(),
@@ -165,6 +166,8 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
       quoteSnapshot: input.quoteSnapshot,
       availabilitySnapshot: input.availabilitySnapshot,
       etaSnapshot: input.etaSnapshot,
+      cancellationPolicySnapshot:
+        input.cancellationPolicySnapshot as OrchestrationOptionDto["cancellationPolicySnapshot"],
       createdAt: new Date(),
     };
     this.options.push(option);

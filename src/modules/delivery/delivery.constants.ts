@@ -1,7 +1,18 @@
-export const DELIVERY_REFERENCE_PREFIX = "DUTT";
+export const DELIVERY_REFERENCE_PREFIX = "DOTT";
+
+/** Inclusive bounds for WGS84 coordinates on delivery locations. */
+export const MIN_LATITUDE = -90;
+export const MAX_LATITUDE = 90;
+export const MIN_LONGITUDE = -180;
+export const MAX_LONGITUDE = 180;
 
 /** MVP maximum package weight (kg). Not provider-specific. */
 export const MAX_WEIGHT_KG = 50;
+
+/** Max weight (kg) for Small tier — align with deriveSizeTier. */
+export const SMALL_PACKAGE_MAX_WEIGHT_KG = 0.5;
+/** Max weight (kg) for Medium tier — align with deriveSizeTier. */
+export const MEDIUM_PACKAGE_MAX_WEIGHT_KG = 2.5;
 
 /** Dimensions required when weight exceeds this threshold (kg). */
 export const DIMENSIONS_REQUIRED_ABOVE_KG = 3;
@@ -19,9 +30,6 @@ export const DEFAULT_LIST_PAGE = 1;
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 100;
 
-/** E.164: + and 8–15 digits total after country code rules (ITU E.164 max 15). */
-export const E164_PHONE_REGEX = /^\+[1-9]\d{7,14}$/;
-
 /**
  * Durable object storage key (not a browser blob URL or absolute http(s) URL).
  * Example: deliveries/uuid/photos/front.jpg
@@ -30,3 +38,7 @@ export const OBJECT_KEY_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/;
 
 export const IDEMPOTENCY_HEADER = "idempotency-key";
 export const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+
+/** Supabase pooler latency can exceed Prisma's default 5s interactive transaction limit. */
+export const DELIVERY_TRANSACTION_TIMEOUT_MS = 20_000;
+export const DELIVERY_TRANSACTION_MAX_WAIT_MS = 10_000;

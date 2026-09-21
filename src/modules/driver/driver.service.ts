@@ -1,4 +1,6 @@
-import type { DeliveryStatus, UserRole } from "@prisma/client";
+import type { DeliveryStatus, OperationalDataSource, UserRole } from "@prisma/client";
+import { AppError } from "../../core/errors/app-error.js";
+import { ErrorCodes } from "../../core/errors/error-codes.js";
 import { logger } from "../../config/logger.js";
 import { loadAuthorizedDelivery } from "../delivery/delivery-access.js";
 import {
@@ -32,7 +34,8 @@ function mapDriverFields(driver: NormalizedDriver | null) {
     return {
       providerDriverId: null,
       driverName: null,
-      driverPhone: null,
+      driverPhoneCountryCode: null,
+      driverPhoneNumber: null,
       driverPhotoUrl: null,
       providerRating: null,
       vehicleType: null,
@@ -43,7 +46,8 @@ function mapDriverFields(driver: NormalizedDriver | null) {
   return {
     providerDriverId: driver.providerDriverId,
     driverName: driver.name,
-    driverPhone: driver.phone,
+    driverPhoneCountryCode: driver.phone?.countryCode ?? null,
+    driverPhoneNumber: driver.phone?.number ?? null,
     driverPhotoUrl: driver.photoUrl,
     providerRating: driver.providerRating,
     vehicleType: driver.vehicleType,
@@ -159,6 +163,55 @@ export class DriverService {
     return this.upsertFromProvider(input);
   }
 
+  async simulateProviderAssignment(input: {
+    deliveryId: string;
+    userId: string;
+    role: UserRole;
+    driver: NormalizedDriver;
+  }) {
+    const delivery = await loadAuthorizedDelivery(
+      this.deliveryRepo,
+      input.deliveryId,
+      input.userId,
+      input.role,
+    );
+    const booking = await requireBookedProviderBooking(
+      input.deliveryId,
+      this.bookingRepo,
+    );
+
+    if (
+      delivery.status !== "BOOKED" &&
+      delivery.status !== "DRIVER_ASSIGNED"
+    ) {
+      throw new AppError(
+        "Driver simulation is not allowed for the current delivery status.",
+        {
+          statusCode: 409,
+          code: ErrorCodes.DELIVERY_INVALID_TRANSITION,
+        },
+      );
+    }
+
+    const row = await this.upsertFromProvider({
+      deliveryId: input.deliveryId,
+      deliveryStatus: delivery.status,
+      providerBookingId: booking.id,
+      providerId: booking.providerId,
+      driver: input.driver,
+      known: true,
+      assigned: true,
+      source: "SYSTEM",
+      providerStatus: "ASSIGNED",
+      metadata: { simulation: true },
+    });
+
+    return {
+      success: true as const,
+      data: toCustomerDriverResponse(row),
+    };
+  }
+
   private async upsertFromProvider(
     input: UpsertDriverInput & { deliveryStatus: DeliveryStatus },
   ) {
@@ -191,8 +244,12 @@ export class DriverService {
               incomingFields.providerDriverId ??
               existingAssigned.providerDriverId,
             driverName: incomingFields.driverName ?? existingAssigned.driverName,
-            driverPhone:
-              incomingFields.driverPhone ?? existingAssigned.driverPhone,
+            driverPhoneCountryCode:
+              incomingFields.driverPhoneCountryCode ??
+              existingAssigned.driverPhoneCountryCode,
+            driverPhoneNumber:
+              incomingFields.driverPhoneNumber ??
+              existingAssigned.driverPhoneNumber,
             driverPhotoUrl:
               incomingFields.driverPhotoUrl ?? existingAssigned.driverPhotoUrl,
             providerRating:
@@ -231,7 +288,7 @@ export class DriverService {
         currentStatus: input.deliveryStatus,
         toStatus: "DRIVER_ASSIGNED",
         expectedFromStatuses: ["BOOKED", "DRIVER_ASSIGNED"],
-        source: input.source === "PROVIDER_WEBHOOK" ? "WEBHOOK" : "TRACKING",
+        source: mapDriverAssignmentLifecycleSource(input.source),
         reason: "Driver assigned by provider",
         metadata: { driverAssignmentId: row.id },
       });
@@ -249,6 +306,18 @@ export class DriverService {
 
     return row;
   }
+}
+
+function mapDriverAssignmentLifecycleSource(
+  source: OperationalDataSource,
+): "WEBHOOK" | "TRACKING" | "SYSTEM" {
+  if (source === "PROVIDER_WEBHOOK") {
+    return "WEBHOOK";
+  }
+  if (source === "SYSTEM") {
+    return "SYSTEM";
+  }
+  return "TRACKING";
 }
 
 export const driverService = new DriverService();

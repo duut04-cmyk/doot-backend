@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { authenticate } from "../../core/middleware/authenticate.js";
+import { requireRole } from "../../core/middleware/authorize.js";
 import { validateRequest } from "../../core/validation/index.js";
 import type { BookingController } from "../booking/booking.controller.js";
 import { createBookingRouter } from "../booking/booking.routes.js";
@@ -49,6 +50,7 @@ export function createDeliveryRouter(
   router.post(
     "/",
     auth,
+    requireRole("CUSTOMER"),
     validateRequest({ body: createDeliverySchema }),
     controller.create,
   );

@@ -17,7 +17,12 @@ import type {
   StatusEventSource,
 } from "@prisma/client";
 import { getPrismaClient } from "../../config/database.js";
-import { DELIVERY_REFERENCE_PREFIX } from "./delivery.constants.js";
+import { toPhoneResponse } from "../../core/phone/phone.js";
+import {
+  DELIVERY_REFERENCE_PREFIX,
+  DELIVERY_TRANSACTION_MAX_WAIT_MS,
+  DELIVERY_TRANSACTION_TIMEOUT_MS,
+} from "./delivery.constants.js";
 import type { DeliveryDetailDto, NormalizedCreateDelivery } from "./delivery.types.js";
 import { decimalToNumber } from "./delivery.types.js";
 
@@ -151,14 +156,36 @@ export function toDeliveryDetailDto(
     pickup: {
       addressText: delivery.pickup.addressText,
       contactName: delivery.pickup.contactName,
-      contactPhone: delivery.pickup.contactPhone,
+      contactPhone: toPhoneResponse(
+        delivery.pickup.contactPhoneCountryCode,
+        delivery.pickup.contactPhoneNumber,
+      )!,
       instructions: delivery.pickup.instructions,
+      latitude:
+        delivery.pickup.latitude == null
+          ? null
+          : decimalToNumber(delivery.pickup.latitude),
+      longitude:
+        delivery.pickup.longitude == null
+          ? null
+          : decimalToNumber(delivery.pickup.longitude),
     },
     drop: {
       addressText: delivery.drop.addressText,
       contactName: delivery.drop.contactName,
-      contactPhone: delivery.drop.contactPhone,
+      contactPhone: toPhoneResponse(
+        delivery.drop.contactPhoneCountryCode,
+        delivery.drop.contactPhoneNumber,
+      )!,
       instructions: delivery.drop.instructions,
+      latitude:
+        delivery.drop.latitude == null
+          ? null
+          : decimalToNumber(delivery.drop.latitude),
+      longitude:
+        delivery.drop.longitude == null
+          ? null
+          : decimalToNumber(delivery.drop.longitude),
     },
     package: {
       packageType: delivery.package.packageType,
@@ -209,7 +236,10 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
   }
 
   withTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return getPrismaClient().$transaction(fn);
+    return getPrismaClient().$transaction(fn, {
+      maxWait: DELIVERY_TRANSACTION_MAX_WAIT_MS,
+      timeout: DELIVERY_TRANSACTION_TIMEOUT_MS,
+    });
   }
 
   async nextReference(client?: AuthDbClient): Promise<string> {
@@ -238,16 +268,22 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
           create: {
             addressText: input.pickup.addressText,
             contactName: input.pickup.contactName,
-            contactPhone: input.pickup.contactPhone,
+            contactPhoneCountryCode: input.pickup.contactPhoneCountryCode,
+            contactPhoneNumber: input.pickup.contactPhoneNumber,
             instructions: input.pickup.instructions,
+            latitude: input.pickup.latitude,
+            longitude: input.pickup.longitude,
           },
         },
         drop: {
           create: {
             addressText: input.drop.addressText,
             contactName: input.drop.contactName,
-            contactPhone: input.drop.contactPhone,
+            contactPhoneCountryCode: input.drop.contactPhoneCountryCode,
+            contactPhoneNumber: input.drop.contactPhoneNumber,
             instructions: input.drop.instructions,
+            latitude: input.drop.latitude,
+            longitude: input.drop.longitude,
           },
         },
         package: {
@@ -282,7 +318,7 @@ export class PrismaDeliveryRepository implements IDeliveryRepository {
         compliance: {
           create: {
             accepted: true,
-            acceptedAt: input.complianceAcceptedAt,
+            acceptedAt: input.compliance.acceptedAt,
           },
         },
         requirements: {

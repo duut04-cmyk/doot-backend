@@ -20,6 +20,7 @@ import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestrati
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
+import { knownFixedFeeCancellationPolicy } from "./helpers/cancellation-policy-test-helpers.js";
 
 describe("Booking HTTP", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -92,20 +93,25 @@ describe("Booking HTTP", () => {
   });
 
   it("confirms delivery via HTTP and returns booking payload", async () => {
-    executeMock.mockResolvedValue({
-      success: true,
-      outcome: "BOOKED",
-      providerBookingId: "PO-HTTP-1",
-      providerReference: "REF-HTTP-1",
-      status: "CONFIRMED",
-      bookedAt: new Date().toISOString(),
-      estimatedPickupAt: null,
-      estimatedDeliveryAt: null,
-      trackingUrl: null,
-      driver: null,
-      service: null,
-      reason: null,
-      amount: { amount: 150, currency: "INR" },
+    executeMock.mockImplementation(async (input: { operation: string }) => {
+      if (input.operation === "getCancellationPolicy") {
+        return knownFixedFeeCancellationPolicy();
+      }
+      return {
+        success: true,
+        outcome: "BOOKED",
+        providerBookingId: "PO-HTTP-1",
+        providerReference: "REF-HTTP-1",
+        status: "CONFIRMED",
+        bookedAt: new Date().toISOString(),
+        estimatedPickupAt: null,
+        estimatedDeliveryAt: null,
+        trackingUrl: null,
+        driver: null,
+        service: null,
+        reason: null,
+        amount: { amount: 150, currency: "INR" },
+      };
     });
 
     const seeded = await seedOptionReadyDelivery({

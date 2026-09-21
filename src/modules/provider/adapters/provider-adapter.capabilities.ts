@@ -11,6 +11,7 @@ export const OPERATION_REQUIRED_CAPABILITIES: Record<
   createBooking: ["BOOKING"],
   getBooking: ["BOOKING"],
   cancelBooking: ["CANCELLATION"],
+  getCancellationPolicy: ["CANCELLATION"],
   getTracking: ["LIVE_TRACKING", "TRACKING_URL"],
   parseWebhook: ["WEBHOOKS"],
   healthCheck: [],

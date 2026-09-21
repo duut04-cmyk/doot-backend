@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { borzoCourierSchema } from "./borzo.schemas.js";
 
 const borzoContactPersonSchema = z
   .object({
@@ -39,6 +40,7 @@ export const borzoOrderCallbackSchema = z
         matter: z.string().nullable().optional(),
         total_weight_kg: z.number().nullable().optional(),
         points: z.array(borzoOrderPointSchema).nullable().optional(),
+        courier: borzoCourierSchema,
       })
       .passthrough(),
   })

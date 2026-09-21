@@ -38,7 +38,8 @@ describe("Auth HTTP API", () => {
       .send({
         name: "John Doe",
         email: "john@example.com",
-        phone: "+919876543210",
+        phoneCountryCode: "+91",
+        phoneNumber: "9876543210",
         password: "StrongPassword123!",
       });
 
@@ -49,7 +50,8 @@ describe("Auth HTTP API", () => {
     expect(signup).toHaveBeenCalledWith({
       name: "John Doe",
       email: "john@example.com",
-      phone: "+919876543210",
+      phoneCountryCode: "+91",
+      phoneNumber: "9876543210",
       password: "StrongPassword123!",
     });
   });

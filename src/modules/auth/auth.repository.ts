@@ -2,7 +2,8 @@ import type {
   EmailVerificationOtp,
   OAuthAccount,
   OAuthProvider,
-  PasswordResetToken,
+  PasswordResetOtp,
+  PasswordResetVerificationToken,
   Prisma,
   RefreshToken,
   User,
@@ -11,7 +12,8 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 import { getPrismaClient } from "../../config/database.js";
 import type {
   CreateOAuthAccountData,
-  CreatePasswordResetTokenData,
+  CreatePasswordResetOtpData,
+  CreatePasswordResetVerificationTokenData,
   CreateRefreshTokenData,
   CreateUserData,
   UpdateUserData,
@@ -25,7 +27,8 @@ const authenticatedUserSelect = {
   id: true,
   name: true,
   email: true,
-  phone: true,
+  phoneCountryCode: true,
+  phoneNumber: true,
   emailVerified: true,
   status: true,
   role: true,
@@ -92,22 +95,47 @@ export interface IAuthRepository {
     client?: AuthDbClient,
   ): Promise<RefreshToken>;
   revokeAllRefreshTokens(userId: string, client?: AuthDbClient): Promise<void>;
-  createPasswordResetToken(
-    data: CreatePasswordResetTokenData,
+  findLatestPasswordResetOtp(
+    userId: string,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken>;
-  findPasswordResetTokenByHash(
-    tokenHash: string,
+  ): Promise<PasswordResetOtp | null>;
+  findLatestActivePasswordResetOtp(
+    userId: string,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken | null>;
-  invalidatePasswordResetTokens(
+  ): Promise<PasswordResetOtp | null>;
+  invalidatePasswordResetOtps(
     userId: string,
     client?: AuthDbClient,
   ): Promise<void>;
-  markPasswordResetTokenUsed(
+  createPasswordResetOtp(
+    data: CreatePasswordResetOtpData,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp>;
+  incrementPasswordResetOtpAttempts(
+    otpId: string,
+    maxAttempts: number,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp | null>;
+  consumePasswordResetOtp(
+    otpId: string,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp | null>;
+  invalidatePasswordResetVerificationTokens(
+    userId: string,
+    client?: AuthDbClient,
+  ): Promise<void>;
+  createPasswordResetVerificationToken(
+    data: CreatePasswordResetVerificationTokenData,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetVerificationToken>;
+  findPasswordResetVerificationTokenByHash(
+    tokenHash: string,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetVerificationToken | null>;
+  markPasswordResetVerificationTokenUsed(
     tokenId: string,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken>;
+  ): Promise<PasswordResetVerificationToken | null>;
   updateUserPassword(
     userId: string,
     passwordHash: string,
@@ -162,7 +190,8 @@ export class AuthRepository implements IAuthRepository {
       data: {
         name: data.name,
         email: data.email,
-        phone: data.phone ?? null,
+        phoneCountryCode: data.phoneCountryCode ?? null,
+        phoneNumber: data.phoneNumber ?? null,
         passwordHash: data.passwordHash ?? null,
         emailVerified: data.emailVerified ?? false,
       },
@@ -304,33 +333,101 @@ export class AuthRepository implements IAuthRepository {
     });
   }
 
-  createPasswordResetToken(
-    data: CreatePasswordResetTokenData,
+  findLatestPasswordResetOtp(
+    userId: string,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken> {
-    return this.db(client).passwordResetToken.create({
+  ): Promise<PasswordResetOtp | null> {
+    return this.db(client).passwordResetOtp.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  findLatestActivePasswordResetOtp(
+    userId: string,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp | null> {
+    return this.db(client).passwordResetOtp.findFirst({
+      where: {
+        userId,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async invalidatePasswordResetOtps(
+    userId: string,
+    client?: AuthDbClient,
+  ): Promise<void> {
+    await this.db(client).passwordResetOtp.updateMany({
+      where: {
+        userId,
+        consumedAt: null,
+      },
       data: {
-        userId: data.userId,
-        tokenHash: data.tokenHash,
-        expiresAt: data.expiresAt,
+        consumedAt: new Date(),
       },
     });
   }
 
-  findPasswordResetTokenByHash(
-    tokenHash: string,
+  createPasswordResetOtp(
+    data: CreatePasswordResetOtpData,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken | null> {
-    return this.db(client).passwordResetToken.findFirst({
-      where: { tokenHash },
+  ): Promise<PasswordResetOtp> {
+    return this.db(client).passwordResetOtp.create({
+      data: {
+        userId: data.userId,
+        codeHash: data.codeHash,
+        expiresAt: data.expiresAt,
+        maxAttempts: data.maxAttempts,
+        attempts: 0,
+      },
     });
   }
 
-  async invalidatePasswordResetTokens(
+  async incrementPasswordResetOtpAttempts(
+    otpId: string,
+    maxAttempts: number,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp | null> {
+    const db = this.db(client);
+    const updated = await db.passwordResetOtp.updateMany({
+      where: {
+        id: otpId,
+        consumedAt: null,
+        attempts: { lt: maxAttempts },
+      },
+      data: { attempts: { increment: 1 } },
+    });
+    if (updated.count === 0) {
+      return null;
+    }
+    return db.passwordResetOtp.findUnique({ where: { id: otpId } });
+  }
+
+  async consumePasswordResetOtp(
+    otpId: string,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetOtp | null> {
+    const db = this.db(client);
+    const consumedAt = new Date();
+    const updated = await db.passwordResetOtp.updateMany({
+      where: { id: otpId, consumedAt: null },
+      data: { consumedAt },
+    });
+    if (updated.count === 0) {
+      return null;
+    }
+    return db.passwordResetOtp.findUnique({ where: { id: otpId } });
+  }
+
+  async invalidatePasswordResetVerificationTokens(
     userId: string,
     client?: AuthDbClient,
   ): Promise<void> {
-    await this.db(client).passwordResetToken.updateMany({
+    await this.db(client).passwordResetVerificationToken.updateMany({
       where: {
         userId,
         usedAt: null,
@@ -341,13 +438,43 @@ export class AuthRepository implements IAuthRepository {
     });
   }
 
-  markPasswordResetTokenUsed(
+  createPasswordResetVerificationToken(
+    data: CreatePasswordResetVerificationTokenData,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetVerificationToken> {
+    return this.db(client).passwordResetVerificationToken.create({
+      data: {
+        userId: data.userId,
+        tokenHash: data.tokenHash,
+        expiresAt: data.expiresAt,
+      },
+    });
+  }
+
+  findPasswordResetVerificationTokenByHash(
+    tokenHash: string,
+    client?: AuthDbClient,
+  ): Promise<PasswordResetVerificationToken | null> {
+    return this.db(client).passwordResetVerificationToken.findFirst({
+      where: { tokenHash },
+    });
+  }
+
+  async markPasswordResetVerificationTokenUsed(
     tokenId: string,
     client?: AuthDbClient,
-  ): Promise<PasswordResetToken> {
-    return this.db(client).passwordResetToken.update({
+  ): Promise<PasswordResetVerificationToken | null> {
+    const db = this.db(client);
+    const usedAt = new Date();
+    const updated = await db.passwordResetVerificationToken.updateMany({
+      where: { id: tokenId, usedAt: null },
+      data: { usedAt },
+    });
+    if (updated.count === 0) {
+      return null;
+    }
+    return db.passwordResetVerificationToken.findUnique({
       where: { id: tokenId },
-      data: { usedAt: new Date() },
     });
   }
 

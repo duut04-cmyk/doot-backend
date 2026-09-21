@@ -96,6 +96,7 @@ function mapOption(row: {
   quoteSnapshot: unknown;
   availabilitySnapshot: unknown;
   etaSnapshot: unknown;
+  cancellationPolicySnapshot: unknown;
   createdAt: Date;
 }): OrchestrationOptionDto {
   return {
@@ -115,6 +116,7 @@ function mapOption(row: {
       unknown
     > | null,
     etaSnapshot: row.etaSnapshot as Record<string, unknown> | null,
+    cancellationPolicySnapshot: row.cancellationPolicySnapshot as OrchestrationOptionDto["cancellationPolicySnapshot"],
     createdAt: row.createdAt,
   };
 }
@@ -194,6 +196,7 @@ export interface IOrchestrationRepository {
       quoteSnapshot: Record<string, unknown>;
       availabilitySnapshot: Record<string, unknown> | null;
       etaSnapshot: Record<string, unknown> | null;
+      cancellationPolicySnapshot: Record<string, unknown> | null;
     },
     client?: OrchestrationDbClient,
   ): Promise<OrchestrationOptionDto>;
@@ -355,6 +358,7 @@ export class PrismaOrchestrationRepository implements IOrchestrationRepository {
       quoteSnapshot: Record<string, unknown>;
       availabilitySnapshot: Record<string, unknown> | null;
       etaSnapshot: Record<string, unknown> | null;
+      cancellationPolicySnapshot: Record<string, unknown> | null;
     },
     client?: OrchestrationDbClient,
   ): Promise<OrchestrationOptionDto> {
@@ -375,6 +379,9 @@ export class PrismaOrchestrationRepository implements IOrchestrationRepository {
           : undefined,
         etaSnapshot: input.etaSnapshot
           ? (input.etaSnapshot as unknown as Prisma.InputJsonValue)
+          : undefined,
+        cancellationPolicySnapshot: input.cancellationPolicySnapshot
+          ? (input.cancellationPolicySnapshot as unknown as Prisma.InputJsonValue)
           : undefined,
       },
     });

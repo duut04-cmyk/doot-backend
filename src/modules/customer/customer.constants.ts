@@ -1,0 +1,18 @@
+export const DEFAULT_LIST_PAGE = 1;
+export const DEFAULT_LIST_LIMIT = 20;
+export const MAX_LIST_LIMIT = 100;
+export const MAX_SEARCH_LENGTH = 128;
+export const RECENT_DELIVERIES_LIMIT = 10;
+
+export const ACTIVE_DELIVERY_STATUSES = [
+  "CREATED",
+  "ORCHESTRATING",
+  "OPTION_READY",
+  "BOOKING",
+  "BOOKED",
+  "DRIVER_ASSIGNED",
+  "PICKUP_OTP_PENDING",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERY_OTP_PENDING",
+] as const;

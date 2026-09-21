@@ -43,7 +43,7 @@ export const bookingSwaggerPaths = {
       tags: ["Deliveries"],
       summary: "Confirm delivery and book with selected provider",
       description:
-        "Uses the persisted Phase 5 orchestration selected option. Supports optional Idempotency-Key. Does not accept client provider or price selection.",
+        "Uses the persisted Phase 5 orchestration selected option. Supports optional Idempotency-Key. Does not accept client provider or price selection. Revalidates stale quotes and cancellation policy before booking; returns 409 BOOKING_OPTION_CHANGED when price or cancellation terms have materially changed.",
       security: [{ bearerAuth: [] }],
       parameters: [
         {

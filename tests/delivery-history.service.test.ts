@@ -13,6 +13,7 @@ import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { InMemoryRatingRepository } from "./helpers/in-memory-rating-repository.js";
 import { InMemoryTrackingRepository } from "./helpers/in-memory-tracking-repository.js";
+import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
 import {
   seedDeliveredDelivery,
 } from "./helpers/operational-test-helpers.js";
@@ -72,7 +73,7 @@ describe("DeliveryHistoryService", () => {
       providerId: seeded.providerId,
       providerDriverId: "DRV-1",
       driverName: "Alex Driver",
-      driverPhone: "+919999999999",
+      ...storedDriverPhone("+91", "9999999999"),
       driverPhotoUrl: null,
       providerRating: 4.8,
       vehicleType: "BIKE",

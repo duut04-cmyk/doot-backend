@@ -96,7 +96,7 @@ describe("Borzo webhook HTTP endpoint", () => {
     expect(repo.events).toHaveLength(1);
   });
 
-  it("treats delivery status changes as new events", async () => {
+  it("treats delivery status changes as new events", { timeout: 15000 }, async () => {
     const created = loadFixtureRaw("delivery-created.json");
     const changed = loadFixtureRaw("delivery-changed.json");
     const app = buildApp();

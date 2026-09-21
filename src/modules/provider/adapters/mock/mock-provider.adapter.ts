@@ -1,4 +1,3 @@
-import type { ProviderCapability } from "@prisma/client";
 import type { NormalizedDriver } from "../../contracts/common.js";
 import type { AvailabilityRequest } from "../../contracts/availability.js";
 import type { BookingRequest, NormalizedBookingResult } from "../../contracts/booking.js";
@@ -6,6 +5,10 @@ import type {
   CancellationRequest,
   NormalizedCancellationResult,
 } from "../../contracts/cancellation.js";
+import type {
+  CancellationPolicy,
+  CancellationPolicyRequest,
+} from "../../contracts/cancellation-policy.js";
 import type { NormalizedQuote, QuoteRequest } from "../../contracts/quote.js";
 import { ProviderAdapterError } from "../../contracts/provider-error.js";
 import type {
@@ -33,20 +36,10 @@ import {
   MOCK_ADAPTER_VERSION,
   MOCK_BOOKING_ID,
   MOCK_CANCELLATION_ID,
+  MOCK_CAPABILITIES,
   MOCK_PROVIDER_CODE,
   MOCK_QUOTE_ID,
 } from "./mock-provider.constants.js";
-
-const MOCK_CAPABILITIES: ProviderCapability[] = [
-  "SERVICEABILITY",
-  "AVAILABILITY",
-  "PRICING",
-  "BOOKING",
-  "CANCELLATION",
-  "LIVE_TRACKING",
-  "TRACKING_URL",
-  "WEBHOOKS",
-];
 
 const MOCK_OPERATIONS: AdapterOperation[] = [
   "checkServiceability",
@@ -55,6 +48,7 @@ const MOCK_OPERATIONS: AdapterOperation[] = [
   "createBooking",
   "getBooking",
   "cancelBooking",
+  "getCancellationPolicy",
   "getTracking",
   "parseWebhook",
   "healthCheck",
@@ -111,6 +105,12 @@ export class MockProviderAdapter implements ProviderAdapter {
       case "cancelBooking":
         result = this.cancelBooking(
           input as CancellationRequest,
+          ctx,
+        ) as AdapterOperationOutput<T>;
+        break;
+      case "getCancellationPolicy":
+        result = this.getCancellationPolicy(
+          input as CancellationPolicyRequest,
           ctx,
         ) as AdapterOperationOutput<T>;
         break;
@@ -368,16 +368,18 @@ export class MockProviderAdapter implements ProviderAdapter {
     }
     return this.createBooking(
       {
-        deliveryReference: "DUTT-MOCK",
+        deliveryReference: "DOTT-MOCK",
         pickup: {
           addressText: "A",
           contactName: "A",
-          contactPhone: "+911111111111",
+          contactPhoneCountryCode: "+91",
+          contactPhoneNumber: "1111111111",
         },
         drop: {
           addressText: "B",
           contactName: "B",
-          contactPhone: "+912222222222",
+          contactPhoneCountryCode: "+91",
+          contactPhoneNumber: "2222222222",
         },
         package: {
           packageType: "FOOD",
@@ -389,6 +391,37 @@ export class MockProviderAdapter implements ProviderAdapter {
       },
       { requestId: "mock-get-booking", config: { providerCode: MOCK_PROVIDER_CODE } as never },
     );
+  }
+
+  private getCancellationPolicy(
+    _request: CancellationPolicyRequest,
+    ctx: AdapterExecutionContext,
+  ): CancellationPolicy {
+    if (ctx.testHints?.mockCancellationPolicy) {
+      return ctx.testHints.mockCancellationPolicy;
+    }
+
+    if (ctx.testHints?.mockCancellationPolicyKnown === false) {
+      return {
+        supported: false,
+        allowedBeforePickup: false,
+        allowedAfterPickup: false,
+        fee: { type: "UNKNOWN" },
+        conditions: [],
+        policyKnown: false,
+        source: "UNKNOWN",
+      };
+    }
+
+    return {
+      supported: true,
+      allowedBeforePickup: true,
+      allowedAfterPickup: false,
+      fee: { type: "FIXED", amount: 50, currency: "INR" },
+      conditions: [],
+      policyKnown: true,
+      source: "PROVIDER",
+    };
   }
 
   private cancelBooking(
@@ -446,7 +479,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       driver = {
         providerDriverId: "MOCK-DRIVER-1",
         name: "Mock Driver",
-        phone: "+919900000001",
+        phone: { countryCode: "+91", number: "9900000001" },
         photoUrl: null,
         providerRating: 4.8,
         vehicleType: "BIKE",
@@ -465,7 +498,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       eta: null,
       trackingUrl: `https://mock-provider.test/track/${request.providerBookingId}`,
       driver,
-      providerEventId: "MOCK-EVENT-1",
+      providerEventId: `MOCK-EVENT-${Date.now()}`,
     };
   }
 

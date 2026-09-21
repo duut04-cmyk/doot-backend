@@ -100,6 +100,8 @@ POST /api/v1/auth/refresh
 POST /api/v1/auth/logout
 GET  /api/v1/auth/me
 POST /api/v1/auth/forgot-password
+POST /api/v1/auth/verify-password-reset-otp
+POST /api/v1/auth/resend-password-reset-otp
 POST /api/v1/auth/reset-password
 POST /api/v1/auth/google
 ```
@@ -107,8 +109,6 @@ POST /api/v1/auth/google
 Requires Resend configuration (`RESEND_API_KEY` and `RESEND_FROM_EMAIL` or `EMAIL_FROM`) to deliver verification and password-reset emails.
 
 Requires `JWT_ACCESS_SECRET` (min 32 characters) for login/session APIs.
-
-Requires `FRONTEND_URL` for password-reset email links (`${FRONTEND_URL}/reset-password?token=...`).
 
 Requires `GOOGLE_CLIENT_ID` for Google ID-token verification (`POST /api/v1/auth/google`).
 
@@ -138,9 +138,13 @@ curl -X POST http://localhost:5000/api/v1/auth/forgot-password \
   -H "Content-Type: application/json" \
   -d '{"email":"john@example.com"}'
 
+curl -X POST http://localhost:5000/api/v1/auth/verify-password-reset-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@example.com","otp":"123456"}'
+
 curl -X POST http://localhost:5000/api/v1/auth/reset-password \
   -H "Content-Type: application/json" \
-  -d '{"token":"<RESET_TOKEN>","password":"NewStrongPassword123!","confirmPassword":"NewStrongPassword123!"}'
+  -d '{"resetToken":"<RESET_TOKEN>","newPassword":"NewStrongPassword123!"}'
 ```
 
 ### Google authentication
@@ -165,7 +169,7 @@ GET  /api/v1/deliveries
 GET  /api/v1/deliveries/:id
 ```
 
-Authenticated customers create, list, and retrieve **their own** deliveries. `POST` requires an `Idempotency-Key` header. New deliveries start at `CREATED` with a server-generated `DUTT-{n}` reference. Geo, providers, orchestration, booking, OTP, tracking, and pricing are deferred.
+Authenticated customers create, list, and retrieve **their own** deliveries. `POST` requires an `Idempotency-Key` header and the `CUSTOMER` role. New deliveries start at `CREATED` with a server-generated `DOTT-{n}` reference. Pickup/drop may include optional WGS84 coordinates; providers, orchestration, booking, OTP, tracking, and pricing follow in later lifecycle steps.
 
 ### Roles and authorization
 
@@ -319,7 +323,7 @@ OPTION_READY → BOOKING → BOOKED
 
 - Uses the persisted Phase 5 selected orchestration option — clients cannot choose provider, price, or service
 - Optional `Idempotency-Key` header on confirm (same pattern as delivery create)
-- Stable provider correlation reference: `DUTT-{reference}-BOOKING-{attempt}`
+- Stable provider correlation reference: `{reference}-BOOKING-{attempt}` (e.g. `DOTT-1000-BOOKING-1`)
 - Quote freshness via `BOOKING_QUOTE_MAX_AGE_SECONDS` (default 300); stale quotes revalidated when provider supports `getQuote`
 - Material price changes return `409 BOOKING_OPTION_CHANGED` (no silent re-pricing)
 - Provider booking via `ProviderAdapterExecutor.createBooking` only — no direct provider HTTP in booking code
@@ -357,7 +361,7 @@ BOOKED → DRIVER_ASSIGNED → PICKUP_OTP_PENDING → PICKED_UP → IN_TRANSIT �
 ```
 
 - Driver snapshots are nullable — `known: false` when provider data is unavailable; no fabricated driver details
-- Pickup and delivery OTPs are Dutt-owned (bcrypt-hashed, 6-digit); delivery completion is authoritative via delivery OTP verification
+- Pickup and delivery OTPs are Dutt-owned (bcrypt-hashed, 6-digit); pickup OTP is emailed to the delivery owner; delivery completion is authoritative via delivery OTP verification
 - Tracking stores coordinates only when valid; webhook events deduplicated by `providerEventId`
 - Cancellation mirrors booking idempotency; pre-booking statuses cancel locally; post-booking uses `ProviderAdapterExecutor.cancelBooking`
 - Provider webhooks link deliveries via `ProviderBooking.providerOrderId` and update driver/tracking operationally

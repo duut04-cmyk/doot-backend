@@ -5,6 +5,8 @@ import type {
   UserRole,
   UserStatus,
 } from "@prisma/client";
+import type { PhoneResponse } from "../../core/phone/phone.types.js";
+import { toPhoneResponse } from "../../core/phone/phone.js";
 import type { ACCESS_TOKEN_TYPE } from "./auth.constants.js";
 
 export type AuthUser = User;
@@ -22,7 +24,7 @@ export type AuthenticatedUser = {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
+  phone: PhoneResponse | null;
   emailVerified: boolean;
   status: UserStatus;
   role: UserRole;
@@ -32,7 +34,7 @@ export type PublicUserProfile = {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
+  phone: PhoneResponse | null;
   emailVerified: boolean;
   role: UserRole;
 };
@@ -40,7 +42,8 @@ export type PublicUserProfile = {
 export type SignupInput = {
   name: string;
   email: string;
-  phone?: string;
+  phoneCountryCode?: string;
+  phoneNumber?: string;
   password: string;
 };
 
@@ -70,10 +73,26 @@ export type ForgotPasswordInput = {
   email: string;
 };
 
+export type VerifyPasswordResetOtpInput = {
+  email: string;
+  otp: string;
+};
+
+export type ResendPasswordResetOtpInput = {
+  email: string;
+};
+
 export type ResetPasswordInput = {
-  token: string;
-  password: string;
-  confirmPassword: string;
+  resetToken: string;
+  newPassword: string;
+};
+
+export type PasswordResetVerifyResult = {
+  success: true;
+  data: {
+    resetToken: string;
+    expiresAt: string;
+  };
 };
 
 export type AuthMessageResult = {
@@ -111,7 +130,8 @@ export type MeResult = {
 export type CreateUserData = {
   name: string;
   email: string;
-  phone?: string | null;
+  phoneCountryCode?: string | null;
+  phoneNumber?: string | null;
   passwordHash?: string | null;
   emailVerified?: boolean;
 };
@@ -128,7 +148,8 @@ export type GoogleLoginInput = {
 
 export type UpdateUserData = {
   name?: string;
-  phone?: string | null;
+  phoneCountryCode?: string | null;
+  phoneNumber?: string | null;
   passwordHash?: string;
   emailVerified?: boolean;
   status?: UserStatus;
@@ -141,26 +162,37 @@ export type CreateRefreshTokenData = {
   expiresAt: Date;
 };
 
-export type CreatePasswordResetTokenData = {
+export type CreatePasswordResetOtpData = {
+  userId: string;
+  codeHash: string;
+  expiresAt: Date;
+  maxAttempts: number;
+};
+
+export type CreatePasswordResetVerificationTokenData = {
   userId: string;
   tokenHash: string;
   expiresAt: Date;
+};
+
+type UserPhoneFields = {
+  phoneCountryCode: string | null;
+  phoneNumber: string | null;
 };
 
 export function toAuthenticatedUser(user: {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
   emailVerified: boolean;
   status: UserStatus;
   role: UserRole;
-}): AuthenticatedUser {
+} & UserPhoneFields): AuthenticatedUser {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    phone: user.phone,
+    phone: toPhoneResponse(user.phoneCountryCode, user.phoneNumber),
     emailVerified: user.emailVerified,
     status: user.status,
     role: user.role,
@@ -171,15 +203,14 @@ export function toPublicUserProfile(user: {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
   emailVerified: boolean;
   role: UserRole;
-}): PublicUserProfile {
+} & UserPhoneFields): PublicUserProfile {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    phone: user.phone,
+    phone: toPhoneResponse(user.phoneCountryCode, user.phoneNumber),
     emailVerified: user.emailVerified,
     role: user.role,
   };

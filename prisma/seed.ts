@@ -7,48 +7,26 @@
 /* eslint-disable no-console -- seed CLI status messages (no secrets) */
 import { PrismaClient } from "@prisma/client";
 import { env } from "../src/config/env.js";
-import { hashPassword } from "../src/modules/auth/auth.crypto.js";
+import { provisionAdminUser } from "./seed-admin.js";
 
 const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
-  const email = env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = env.ADMIN_PASSWORD;
+  const result = await provisionAdminUser(prisma);
 
-  if (!email || !password) {
+  if (result === "skipped") {
     console.info(
       "Seed skipped: set ADMIN_EMAIL and ADMIN_PASSWORD to provision an admin.",
     );
     return;
   }
 
-  const passwordHash = await hashPassword(password);
-  const existing = await prisma.user.findUnique({ where: { email } });
-
-  if (existing) {
-    await prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        role: "ADMIN",
-        passwordHash,
-        emailVerified: true,
-        status: "ACTIVE",
-      },
-    });
+  const email = env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (result === "updated") {
     console.info(`Updated existing user to ADMIN: ${email}`);
     return;
   }
 
-  await prisma.user.create({
-    data: {
-      name: "Dutt Admin",
-      email,
-      passwordHash,
-      emailVerified: true,
-      status: "ACTIVE",
-      role: "ADMIN",
-    },
-  });
   console.info(`Created ADMIN user: ${email}`);
 }
 

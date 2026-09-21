@@ -32,6 +32,7 @@ import {
   scoreEligibleEvaluations,
   type ScorableEvaluation,
 } from "./orchestration.scoring.js";
+import { toCancellationPolicySnapshot } from "../provider/contracts/cancellation-policy.js";
 import type {
   CreateOrchestrationEvaluationInput,
   OrchestrationRequestDto,
@@ -233,6 +234,7 @@ export class OrchestrationService {
           serviceability: null,
           availability: null,
           quote: null,
+          cancellationPolicy: null,
           compatibility: {
             weightCompatible: true,
             dimensionsCompatible: true,
@@ -342,6 +344,15 @@ export class OrchestrationService {
                         winner.quote.estimatedDeliveryMinutes,
                     }
                   : null,
+              cancellationPolicySnapshot: (() => {
+                const winnerOutcome = outcomes.find(
+                  (item) => item.signals.providerId === winner.providerId,
+                );
+                const policy = winnerOutcome?.signals.cancellationPolicy;
+                return policy
+                  ? toCancellationPolicySnapshot(policy)
+                  : null;
+              })(),
             },
             tx,
           );
@@ -396,6 +407,8 @@ export class OrchestrationService {
           providerCount: providers.length,
           eligibleCount: eligible.length,
           selectedProviderCode: selectedOption?.providerCode ?? null,
+          selectedCancellationPolicyKnown:
+            selectedOption?.cancellationPolicySnapshot?.policyKnown ?? null,
           deliveryStatus,
         },
         "orchestration_completed",
@@ -454,6 +467,7 @@ export class OrchestrationService {
         availability: signals.availability,
         quote: signals.quote,
         compatibility: signals.compatibility,
+        cancellationPolicy: signals.cancellationPolicy,
       },
       providerMetadata: signals.providerMetadata,
       errorCategory: outcome.errorCategory,

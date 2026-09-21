@@ -7,6 +7,7 @@ import {
   type BorzoWebhookCallback,
   isBorzoOrderCallback,
 } from "./borzo.webhook.schemas.js";
+import { mapBorzoCourierToNormalizedDriver } from "./borzo-operational.mapper.js";
 import {
   normalizeBorzoDeliveryStatus,
   normalizeBorzoOrderStatus,
@@ -79,7 +80,7 @@ export function mapBorzoOrderCallbackToNormalizedEvent(
     status: rawStatus,
     eventTimestamp: toIsoTimestamp(callback.event_datetime),
     receivedAt,
-    driver: null,
+    driver: mapBorzoCourierToNormalizedDriver(order.courier),
     tracking: null,
     metadata: {
       callbackCategory: "order",

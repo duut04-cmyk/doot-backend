@@ -7,11 +7,19 @@ import {
 export const normalizedLocationSchema = z.object({
   addressText: z.string().min(1),
   contactName: z.string().min(1),
-  contactPhone: z.string().min(1),
+  contactPhoneCountryCode: z.string().min(1),
+  contactPhoneNumber: z.string().min(1),
   instructions: z.string().nullable().optional(),
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
 });
+
+export const normalizedPhoneSchema = z
+  .object({
+    countryCode: z.string().min(1),
+    number: z.string().min(1),
+  })
+  .nullable();
 
 export const normalizedPackageSchema = z.object({
   packageType: z.enum(PACKAGE_TYPE_VALUES),
@@ -34,7 +42,7 @@ export const normalizedScheduleSchema = z.object({
 export const normalizedDriverSchema = z.object({
   providerDriverId: z.string().nullable(),
   name: z.string().nullable(),
-  phone: z.string().nullable(),
+  phone: normalizedPhoneSchema,
   photoUrl: z.string().nullable(),
   providerRating: z.number().nullable(),
   vehicleType: z.enum(PROVIDER_VEHICLE_TYPE_VALUES).nullable(),
@@ -48,6 +56,7 @@ export const moneyAmountSchema = z.object({
 });
 
 export type NormalizedLocation = z.infer<typeof normalizedLocationSchema>;
+export type NormalizedPhone = z.infer<typeof normalizedPhoneSchema>;
 export type NormalizedPackage = z.infer<typeof normalizedPackageSchema>;
 export type NormalizedSchedule = z.infer<typeof normalizedScheduleSchema>;
 export type NormalizedDriver = z.infer<typeof normalizedDriverSchema>;

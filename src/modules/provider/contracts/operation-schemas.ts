@@ -2,6 +2,7 @@ import type { AdapterOperation } from "../adapters/provider-adapter.types.js";
 import { availabilityResultSchema } from "./availability.js";
 import { normalizedBookingResultSchema } from "./booking.js";
 import { normalizedCancellationResultSchema } from "./cancellation.js";
+import { cancellationPolicySchema } from "./cancellation-policy.js";
 import { normalizedQuoteSchema } from "./quote.js";
 import { normalizedServiceabilityResultSchema } from "./serviceability.js";
 import { normalizedTrackingResultSchema } from "./tracking.js";
@@ -36,6 +37,7 @@ export const ADAPTER_OPERATION_OUTPUT_SCHEMAS: Record<
   createBooking: normalizedBookingResultSchema,
   getBooking: normalizedBookingResultSchema,
   cancelBooking: normalizedCancellationResultSchema,
+  getCancellationPolicy: cancellationPolicySchema,
   getTracking: normalizedTrackingResultSchema,
   parseWebhook: normalizedProviderWebhookEventSchema,
   healthCheck: healthCheckResultSchema,

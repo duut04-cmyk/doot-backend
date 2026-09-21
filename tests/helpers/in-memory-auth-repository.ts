@@ -3,7 +3,8 @@ import type {
   EmailVerificationOtp,
   OAuthAccount,
   OAuthProvider,
-  PasswordResetToken,
+  PasswordResetOtp,
+  PasswordResetVerificationToken,
   Prisma,
   RefreshToken,
   User,
@@ -16,7 +17,8 @@ import type {
 } from "../../src/modules/auth/auth.repository.js";
 import type {
   CreateOAuthAccountData,
-  CreatePasswordResetTokenData,
+  CreatePasswordResetOtpData,
+  CreatePasswordResetVerificationTokenData,
   CreateRefreshTokenData,
   CreateUserData,
   UpdateUserData,
@@ -26,7 +28,8 @@ export class InMemoryAuthRepository implements IAuthRepository {
   users: User[] = [];
   otps: EmailVerificationOtp[] = [];
   refreshTokens: RefreshToken[] = [];
-  passwordResetTokens: PasswordResetToken[] = [];
+  passwordResetOtps: PasswordResetOtp[] = [];
+  passwordResetVerificationTokens: PasswordResetVerificationToken[] = [];
   oauthAccounts: OAuthAccount[] = [];
 
   async withTransaction<T>(
@@ -54,7 +57,8 @@ export class InMemoryAuthRepository implements IAuthRepository {
       id: user.id,
       name: user.name,
       email: user.email,
-      phone: user.phone,
+      phoneCountryCode: user.phoneCountryCode,
+      phoneNumber: user.phoneNumber,
       emailVerified: user.emailVerified,
       status: user.status,
       role: user.role,
@@ -67,7 +71,8 @@ export class InMemoryAuthRepository implements IAuthRepository {
       id: randomUUID(),
       name: data.name,
       email: data.email,
-      phone: data.phone ?? null,
+      phoneCountryCode: data.phoneCountryCode ?? null,
+      phoneNumber: data.phoneNumber ?? null,
       passwordHash: data.passwordHash ?? null,
       emailVerified: data.emailVerified ?? false,
       status: "ACTIVE" as UserStatus,
@@ -202,10 +207,96 @@ export class InMemoryAuthRepository implements IAuthRepository {
     }
   }
 
-  async createPasswordResetToken(
-    data: CreatePasswordResetTokenData,
-  ): Promise<PasswordResetToken> {
-    const token: PasswordResetToken = {
+  async findLatestPasswordResetOtp(
+    userId: string,
+  ): Promise<PasswordResetOtp | null> {
+    return (
+      this.passwordResetOtps
+        .filter((otp) => otp.userId === userId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+    );
+  }
+
+  async findLatestActivePasswordResetOtp(
+    userId: string,
+  ): Promise<PasswordResetOtp | null> {
+    const now = Date.now();
+    return (
+      this.passwordResetOtps
+        .filter(
+          (otp) =>
+            otp.userId === userId &&
+            otp.consumedAt === null &&
+            otp.expiresAt.getTime() > now,
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+    );
+  }
+
+  async invalidatePasswordResetOtps(userId: string): Promise<void> {
+    const now = new Date();
+    for (const otp of this.passwordResetOtps) {
+      if (otp.userId === userId && otp.consumedAt === null) {
+        otp.consumedAt = now;
+      }
+    }
+  }
+
+  async createPasswordResetOtp(
+    data: CreatePasswordResetOtpData,
+  ): Promise<PasswordResetOtp> {
+    const otp: PasswordResetOtp = {
+      id: randomUUID(),
+      userId: data.userId,
+      codeHash: data.codeHash,
+      expiresAt: data.expiresAt,
+      attempts: 0,
+      maxAttempts: data.maxAttempts,
+      consumedAt: null,
+      createdAt: new Date(),
+    };
+    this.passwordResetOtps.push(otp);
+    return otp;
+  }
+
+  async incrementPasswordResetOtpAttempts(
+    otpId: string,
+    maxAttempts: number,
+  ): Promise<PasswordResetOtp | null> {
+    const otp = this.passwordResetOtps.find((item) => item.id === otpId);
+    if (!otp || otp.consumedAt !== null || otp.attempts >= maxAttempts) {
+      return null;
+    }
+    otp.attempts += 1;
+    return otp;
+  }
+
+  async consumePasswordResetOtp(
+    otpId: string,
+  ): Promise<PasswordResetOtp | null> {
+    const otp = this.passwordResetOtps.find((item) => item.id === otpId);
+    if (!otp || otp.consumedAt !== null) {
+      return null;
+    }
+    otp.consumedAt = new Date();
+    return otp;
+  }
+
+  async invalidatePasswordResetVerificationTokens(
+    userId: string,
+  ): Promise<void> {
+    const now = new Date();
+    for (const token of this.passwordResetVerificationTokens) {
+      if (token.userId === userId && token.usedAt === null) {
+        token.usedAt = now;
+      }
+    }
+  }
+
+  async createPasswordResetVerificationToken(
+    data: CreatePasswordResetVerificationTokenData,
+  ): Promise<PasswordResetVerificationToken> {
+    const token: PasswordResetVerificationToken = {
       id: randomUUID(),
       userId: data.userId,
       tokenHash: data.tokenHash,
@@ -213,34 +304,28 @@ export class InMemoryAuthRepository implements IAuthRepository {
       usedAt: null,
       createdAt: new Date(),
     };
-    this.passwordResetTokens.push(token);
+    this.passwordResetVerificationTokens.push(token);
     return token;
   }
 
-  async findPasswordResetTokenByHash(
+  async findPasswordResetVerificationTokenByHash(
     tokenHash: string,
-  ): Promise<PasswordResetToken | null> {
+  ): Promise<PasswordResetVerificationToken | null> {
     return (
-      this.passwordResetTokens.find((token) => token.tokenHash === tokenHash) ??
-      null
+      this.passwordResetVerificationTokens.find(
+        (token) => token.tokenHash === tokenHash,
+      ) ?? null
     );
   }
 
-  async invalidatePasswordResetTokens(userId: string): Promise<void> {
-    const now = new Date();
-    for (const token of this.passwordResetTokens) {
-      if (token.userId === userId && token.usedAt === null) {
-        token.usedAt = now;
-      }
-    }
-  }
-
-  async markPasswordResetTokenUsed(
+  async markPasswordResetVerificationTokenUsed(
     tokenId: string,
-  ): Promise<PasswordResetToken> {
-    const token = this.passwordResetTokens.find((item) => item.id === tokenId);
-    if (!token) {
-      throw new Error("Password reset token not found");
+  ): Promise<PasswordResetVerificationToken | null> {
+    const token = this.passwordResetVerificationTokens.find(
+      (item) => item.id === tokenId,
+    );
+    if (!token || token.usedAt !== null) {
+      return null;
     }
     token.usedAt = new Date();
     return token;
@@ -284,7 +369,6 @@ export class InMemoryAuthRepository implements IAuthRepository {
       const error = new Error("Unique constraint failed") as Error & {
         code: string;
       };
-      // Mimic Prisma unique violation for race-condition handling tests.
       Object.assign(error, { code: "P2002" });
       throw error;
     }

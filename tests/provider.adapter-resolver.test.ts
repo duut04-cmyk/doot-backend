@@ -107,6 +107,48 @@ describe("Provider adapter resolver", () => {
     });
   });
 
+  it("allows getTracking when LIVE_TRACKING is configured", async () => {
+    await seedMockProvider(repo, {
+      integrationStatus: "READY",
+      capabilities: ["LIVE_TRACKING"],
+    });
+    const resolved = await resolver.resolveForExecution({
+      providerCode: "MOCK",
+      operation: "getTracking",
+      requestId: "req-tracking-live",
+    });
+    expect(resolved.config.capabilities).toContain("LIVE_TRACKING");
+  });
+
+  it("allows getTracking when TRACKING_URL is configured", async () => {
+    await seedMockProvider(repo, {
+      integrationStatus: "READY",
+      capabilities: ["TRACKING_URL"],
+    });
+    const resolved = await resolver.resolveForExecution({
+      providerCode: "MOCK",
+      operation: "getTracking",
+      requestId: "req-tracking-url",
+    });
+    expect(resolved.config.capabilities).toContain("TRACKING_URL");
+  });
+
+  it("throws PROVIDER_UNSUPPORTED_OPERATION for getTracking without tracking capabilities", async () => {
+    await seedMockProvider(repo, {
+      integrationStatus: "READY",
+      capabilities: ["BOOKING", "WEBHOOKS"],
+    });
+    await expect(
+      resolver.resolveForExecution({
+        providerCode: "MOCK",
+        operation: "getTracking",
+        requestId: "req-tracking-missing",
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.PROVIDER_UNSUPPORTED_OPERATION,
+    });
+  });
+
   it("allows execution when requireReady is false and status is CONFIGURED", async () => {
     await seedMockProvider(repo, { integrationStatus: "CONFIGURED" });
     const resolved = await resolver.resolveForExecution({

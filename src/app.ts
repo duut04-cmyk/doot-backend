@@ -7,6 +7,7 @@ import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { buildOpenApiDocument } from "./config/swagger.js";
+import { devRequestLoggerMiddleware } from "./core/middleware/dev-request-logger.js";
 import { errorHandlerMiddleware } from "./core/middleware/error-handler.js";
 import { notFoundMiddleware } from "./core/middleware/not-found.js";
 import { requestIdMiddleware } from "./core/middleware/request-id.js";
@@ -19,6 +20,8 @@ export function createApp(options?: {
   authController?: AuthController;
   deliveryController?: DeliveryController;
   borzoWebhookRouter?: ReturnType<typeof createBorzoWebhookRouter>;
+  /** When false, Swagger UI is not mounted (production default). */
+  exposeSwagger?: boolean;
 }) {
   const app = express();
 
@@ -36,18 +39,26 @@ export function createApp(options?: {
   );
   app.use(cookieParser());
   app.use(requestIdMiddleware);
-  app.use(
-    pinoHttp({
-      logger,
-      customProps: (req) => ({
-        requestId: (req as Request).requestId,
-      }),
-      autoLogging: env.NODE_ENV !== "test",
-    }),
-  );
 
-  const openApiDocument = buildOpenApiDocument();
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  if (env.NODE_ENV === "development") {
+    app.use(devRequestLoggerMiddleware);
+  } else if (env.NODE_ENV !== "test") {
+    app.use(
+      pinoHttp({
+        logger,
+        customProps: (req) => ({
+          requestId: (req as Request).requestId,
+        }),
+        autoLogging: true,
+      }),
+    );
+  }
+
+  const exposeSwagger = options?.exposeSwagger ?? env.NODE_ENV !== "production";
+  if (exposeSwagger) {
+    const openApiDocument = buildOpenApiDocument();
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  }
 
   app.use(
     "/api/v1/providers/borzo",

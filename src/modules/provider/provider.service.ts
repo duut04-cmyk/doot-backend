@@ -8,7 +8,11 @@ import {
   toProviderDetailDto,
   toProviderSummaryDto,
 } from "./provider.mapper.js";
-import { computeIntegrationStatus } from "./provider.readiness.js";
+import { providerAdapterRegistry } from "./adapters/provider-adapter-registry.js";
+import {
+  computeIntegrationStatus,
+  computeIntegrationStatusWithAdapter,
+} from "./provider.readiness.js";
 import {
   providerRepository,
   type IProviderRepository,
@@ -599,14 +603,94 @@ export class ProviderService {
     return provider;
   }
 
-  private async refreshIntegrationStatus(
-    providerId: string,
-  ): Promise<ProviderWithRelations> {
-    const provider = await this.requireProvider(providerId);
+  async recordConnectionTestResult(input: {
+    providerId: string;
+    connected: boolean;
+    audit: AuditContext;
+  }): Promise<void> {
+    const provider = await this.requireProvider(input.providerId);
+    const now = new Date();
+    const adapterRegistered = providerAdapterRegistry.has(provider.code);
+
+    if (input.connected) {
+      const integrationStatus = computeIntegrationStatusWithAdapter({
+        provider,
+        activeCredentials: provider.credentials,
+        capabilities: provider.capabilities,
+        adapterRegistered,
+        healthStatus: "HEALTHY",
+      });
+
+      await this.repository.updateProvider(input.providerId, {
+        healthStatus: "HEALTHY",
+        lastHealthCheckAt: now,
+        lastHealthCheckError: null,
+        integrationStatus,
+      });
+
+      await this.audit({
+        ...input.audit,
+        action: "PROVIDER_UPDATED",
+        resourceType: "PROVIDER",
+        resourceId: input.providerId,
+        metadata: {
+          healthCheck: "succeeded",
+          providerCode: provider.code,
+          integrationStatus,
+        },
+      });
+
+      logger.info(
+        {
+          providerId: input.providerId,
+          providerCode: provider.code,
+          integrationStatus,
+        },
+        "provider_health_check_succeeded",
+      );
+      return;
+    }
+
     const integrationStatus = computeIntegrationStatus({
       provider,
       activeCredentials: provider.credentials,
       capabilities: provider.capabilities,
+    });
+
+    await this.repository.updateProvider(input.providerId, {
+      healthStatus: "UNHEALTHY",
+      lastHealthCheckAt: now,
+      lastHealthCheckError: "Provider health check failed.",
+      integrationStatus,
+    });
+
+    await this.audit({
+      ...input.audit,
+      action: "PROVIDER_UPDATED",
+      resourceType: "PROVIDER",
+      resourceId: input.providerId,
+      metadata: {
+        healthCheck: "failed",
+        providerCode: provider.code,
+      },
+    });
+
+    logger.warn(
+      { providerId: input.providerId, providerCode: provider.code },
+      "provider_health_check_failed",
+    );
+  }
+
+  private async refreshIntegrationStatus(
+    providerId: string,
+  ): Promise<ProviderWithRelations> {
+    const provider = await this.requireProvider(providerId);
+    const integrationStatus = computeIntegrationStatusWithAdapter({
+      provider,
+      activeCredentials: provider.credentials,
+      capabilities: provider.capabilities,
+      adapterRegistered: providerAdapterRegistry.has(provider.code),
+      healthStatus: provider.healthStatus,
     });
 
     if (provider.integrationStatus === integrationStatus) {

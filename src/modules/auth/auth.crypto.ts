@@ -8,8 +8,8 @@ import {
   ACCESS_TOKEN_TYPE,
   DEFAULT_BCRYPT_ROUNDS,
   DEFAULT_JWT_ACCESS_EXPIRES_IN,
+  DEFAULT_PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_DAYS,
-  PASSWORD_RESET_TOKEN_EXPIRY_MINUTES,
 } from "./auth.constants.js";
 import type { AccessTokenPayload } from "./auth.types.js";
 
@@ -181,35 +181,33 @@ export function buildRefreshTokenExpiry(from: Date = new Date()): Date {
   );
 }
 
-export function getPasswordResetTokenExpiresMinutes(): number {
-  return (
-    env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES ??
-    PASSWORD_RESET_TOKEN_EXPIRY_MINUTES
-  );
-}
-
-/** Cryptographically secure opaque password-reset token (32+ bytes). */
-export function generatePasswordResetToken(): string {
+/** Cryptographically secure opaque password-reset verification token (32+ bytes). */
+export function generatePasswordResetVerificationToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-/** Deterministic SHA-256 hash for direct password-reset token lookup. */
-export function hashPasswordResetToken(rawToken: string): string {
+/** Deterministic SHA-256 hash for opaque token lookup (refresh / reset verification). */
+export function hashOpaqueToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
-export function buildPasswordResetTokenExpiry(from: Date = new Date()): Date {
-  return new Date(
-    from.getTime() + getPasswordResetTokenExpiresMinutes() * 60 * 1000,
+/** @deprecated Use hashOpaqueToken */
+export function hashPasswordResetToken(rawToken: string): string {
+  return hashOpaqueToken(rawToken);
+}
+
+export function getPasswordResetVerificationTokenExpirySeconds(): number {
+  return (
+    env.PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS ??
+    DEFAULT_PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS
   );
 }
 
-export function buildPasswordResetUrl(rawToken: string): string {
-  if (!env.FRONTEND_URL) {
-    throw new Error("FRONTEND_URL is not configured");
-  }
-
-  const url = new URL("/reset-password", env.FRONTEND_URL);
-  url.searchParams.set("token", rawToken);
-  return url.toString();
+export function buildPasswordResetVerificationTokenExpiry(
+  from: Date = new Date(),
+): Date {
+  return new Date(
+    from.getTime() +
+      getPasswordResetVerificationTokenExpirySeconds() * 1000,
+  );
 }

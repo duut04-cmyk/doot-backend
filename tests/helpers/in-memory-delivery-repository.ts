@@ -105,8 +105,17 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       deliveryId,
       addressText: input.pickup.addressText,
       contactName: input.pickup.contactName,
-      contactPhone: input.pickup.contactPhone,
+      contactPhoneCountryCode: input.pickup.contactPhoneCountryCode,
+      contactPhoneNumber: input.pickup.contactPhoneNumber,
       instructions: input.pickup.instructions,
+      latitude:
+        input.pickup.latitude == null
+          ? null
+          : new PrismaNamespace.Decimal(input.pickup.latitude),
+      longitude:
+        input.pickup.longitude == null
+          ? null
+          : new PrismaNamespace.Decimal(input.pickup.longitude),
     };
 
     const drop: DeliveryDrop = {
@@ -114,8 +123,17 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       deliveryId,
       addressText: input.drop.addressText,
       contactName: input.drop.contactName,
-      contactPhone: input.drop.contactPhone,
+      contactPhoneCountryCode: input.drop.contactPhoneCountryCode,
+      contactPhoneNumber: input.drop.contactPhoneNumber,
       instructions: input.drop.instructions,
+      latitude:
+        input.drop.latitude == null
+          ? null
+          : new PrismaNamespace.Decimal(input.drop.latitude),
+      longitude:
+        input.drop.longitude == null
+          ? null
+          : new PrismaNamespace.Decimal(input.drop.longitude),
     };
 
     const photos: DeliveryPackagePhoto[] = input.package.photos.map((photo) => ({
@@ -165,7 +183,7 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       id: randomUUID(),
       deliveryId,
       accepted: true,
-      acceptedAt: input.complianceAcceptedAt,
+      acceptedAt: input.compliance.acceptedAt,
     };
 
     const requirements: DeliveryHandlingRequirement[] = input.requirements.map(

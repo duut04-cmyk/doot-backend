@@ -313,6 +313,32 @@ describe("Provider Phase 2 admin configuration", () => {
       expect(detail.data.orchestrationEligible).toBe(false);
     });
 
+    it("promotes to READY with HEALTHY after successful connection test", async () => {
+      const { initializeProviderAdapters } = await import(
+        "../src/modules/provider/adapters/bootstrap.js"
+      );
+      initializeProviderAdapters();
+
+      const created = await createProviderViaService({
+        enabled: true,
+        orchestrationEnabled: true,
+      });
+      await service.upsertCredentials({
+        providerId: created.data.id,
+        body: { API_KEY: "key" },
+        audit: { adminUserId: adminId, requestId: "req-health-cred" },
+      });
+      await service.recordConnectionTestResult({
+        providerId: created.data.id,
+        connected: true,
+        audit: { adminUserId: adminId, requestId: "req-health" },
+      });
+      const detail = await service.getProvider(created.data.id);
+      expect(detail.data.health.status).toBe("HEALTHY");
+      expect(detail.data.integrationStatus).toBe("READY");
+      expect(detail.data.orchestrationEligible).toBe(true);
+    });
+
     it("disabled provider is NOT configured for orchestration", async () => {
       const created = await createProviderViaService({ enabled: true });
       await service.upsertCredentials({

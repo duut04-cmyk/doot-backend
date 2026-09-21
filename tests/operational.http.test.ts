@@ -16,7 +16,10 @@ import { initializeProviderAdapters } from "../src/modules/provider/adapters/boo
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
+import { ErrorCodes } from "../src/core/errors/error-codes.js";
+import { GENERIC_OTP_ERROR } from "../src/modules/otp/otp.constants.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
+import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
@@ -73,25 +76,19 @@ describe("Operational HTTP", () => {
     } as unknown as ProviderAdapterExecutor;
 
     const driverController = new DriverController(
-      new DriverService(
-        deliveryRepo,
-        bookingRepo,
-        driverRepo,
-        lifecycle,
-        executor,
-      ),
+      new DriverService(deliveryRepo, bookingRepo, driverRepo, lifecycle, executor),
     );
     const otpController = new OtpController(
-      new OtpService(deliveryRepo, otpRepo, lifecycle),
+      new OtpService(
+        deliveryRepo,
+        otpRepo,
+        lifecycle,
+        authRepo,
+        createNoopEmailSender(),
+      ),
     );
     const trackingController = new TrackingController(
-      new TrackingService(
-        deliveryRepo,
-        bookingRepo,
-        trackingRepo,
-        lifecycle,
-        executor,
-      ),
+      new TrackingService(deliveryRepo, bookingRepo, trackingRepo, lifecycle, executor),
     );
     const cancellationController = new CancellationController(
       new CancellationService(
@@ -124,7 +121,9 @@ describe("Operational HTTP", () => {
 
   it("returns 401 without auth on driver endpoint", async () => {
     const app = buildApp();
-    const res = await request(app).get("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/driver");
+    const res = await request(app).get(
+      "/api/v1/deliveries/00000000-0000-4000-8000-000000000001/driver",
+    );
     expect(res.status).toBe(401);
   });
 
@@ -145,6 +144,132 @@ describe("Operational HTTP", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.known).toBe(false);
+  });
+
+  it("returns 401 without auth on pickup OTP verify endpoint", async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/pickup/verify-otp")
+      .send({ otp: "123456" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.UNAUTHORIZED);
+  });
+
+  it("returns 400 for invalid OTP format over HTTP", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "DRIVER_ASSIGNED",
+      source: "TRACKING",
+      reason: "test",
+    });
+
+    const app = buildApp();
+    await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
+      .set("Authorization", `Bearer ${token}`);
+
+    const res = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup/verify-otp`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ otp: "12345" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("returns 422 for incorrect pickup OTP without revealing the expected code", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "DRIVER_ASSIGNED",
+      source: "TRACKING",
+      reason: "test",
+    });
+
+    const app = buildApp();
+    const generated = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
+      .set("Authorization", `Bearer ${token}`);
+
+    const res = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup/verify-otp`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ otp: "000000" });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe(ErrorCodes.OTP_INVALID);
+    expect(res.body.error.message).toBe(GENERIC_OTP_ERROR);
+    expect(JSON.stringify(res.body)).not.toContain(generated.body.data._testOtp);
+  });
+
+  it("returns 404 when another customer accesses OTP endpoints", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "DRIVER_ASSIGNED",
+      source: "TRACKING",
+      reason: "test",
+    });
+
+    const other = await authRepo.createUser({
+      name: "Other",
+      email: "other-http@example.com",
+      passwordHash: "hash",
+      emailVerified: true,
+    });
+    other.role = "CUSTOMER";
+    const otherToken = generateAccessToken(other.id);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/pickup-otp`)
+      .set("Authorization", `Bearer ${otherToken}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe(ErrorCodes.DELIVERY_NOT_FOUND);
+  });
+
+  it("returns 403 for suspended users on OTP endpoints", async () => {
+    const suspended = await authRepo.createUser({
+      name: "Suspended",
+      email: "suspended@example.com",
+      passwordHash: "hash",
+      emailVerified: true,
+    });
+    suspended.role = "CUSTOMER";
+    suspended.status = "SUSPENDED";
+    const suspendedToken = generateAccessToken(suspended.id);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/pickup-otp")
+      .set("Authorization", `Bearer ${suspendedToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe(ErrorCodes.ACCOUNT_SUSPENDED);
   });
 
   it("generates and verifies pickup OTP over HTTP", async () => {

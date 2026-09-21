@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "../src/core/errors/app-error.js";
+import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
@@ -139,5 +141,102 @@ describe("TrackingService", () => {
     });
 
     expect(trackingRepo.points).toHaveLength(1);
+  });
+
+  it("rejects refresh when provider lacks tracking capabilities", async () => {
+    executeMock.mockRejectedValue(
+      new AppError(
+        "Provider does not support required capabilities: LIVE_TRACKING, TRACKING_URL.",
+        {
+          statusCode: 422,
+          code: ErrorCodes.PROVIDER_UNSUPPORTED_OPERATION,
+        },
+      ),
+    );
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await expect(
+      service.refreshFromProvider({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "ADMIN",
+        requestId: "req-capability-gate",
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.PROVIDER_UNSUPPORTED_OPERATION,
+    });
+    expect(trackingRepo.points).toHaveLength(0);
+  });
+
+  it("deduplicates repeated provider poll tracking with the same providerEventId", async () => {
+    executeMock.mockResolvedValue({
+      status: "IN_TRANSIT",
+      latitude: null,
+      longitude: null,
+      accuracyMeters: null,
+      providerTimestamp: new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      eta: null,
+      trackingUrl: "https://mock.test/track/1",
+      driver: null,
+      providerEventId: "poll-event-1",
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "PICKED_UP",
+      source: "OTP",
+      reason: "test",
+    });
+
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "ADMIN",
+      requestId: "req-poll-1",
+    });
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "ADMIN",
+      requestId: "req-poll-2",
+    });
+
+    expect(trackingRepo.points).toHaveLength(1);
+  });
+
+  it("denies tracking access to another customer delivery", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await expect(
+      service.getTracking({
+        deliveryId: seeded.deliveryId,
+        userId: "99999999-9999-4999-8999-999999999999",
+        role: "CUSTOMER",
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.DELIVERY_NOT_FOUND,
+    });
   });
 });

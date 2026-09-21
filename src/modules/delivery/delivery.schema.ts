@@ -5,7 +5,6 @@ import {
   DEFAULT_LIST_PAGE,
   DEFAULT_PACKAGE_QUANTITY,
   DIMENSIONS_REQUIRED_ABOVE_KG,
-  E164_PHONE_REGEX,
   MAX_ADDRESS_LENGTH,
   MAX_CONTACT_NAME_LENGTH,
   MAX_INSTRUCTIONS_LENGTH,
@@ -14,9 +13,14 @@ import {
   MAX_PACKAGE_DESCRIPTION_LENGTH,
   MAX_PACKAGE_PHOTOS,
   MAX_SPECIAL_INSTRUCTIONS_LENGTH,
+  MAX_LATITUDE,
+  MAX_LONGITUDE,
   MAX_WEIGHT_KG,
+  MIN_LATITUDE,
+  MIN_LONGITUDE,
   OBJECT_KEY_REGEX,
 } from "./delivery.constants.js";
+import { phoneInputSchema } from "../../core/phone/phone.schema.js";
 import { deriveSizeTier } from "./delivery.types.js";
 
 const packageTypes = ["MEDICINE", "FOOD", "DOCUMENT", "OTHER"] as const;
@@ -57,17 +61,36 @@ const optionalTrimmed = (max: number) =>
     return trimmed === "" ? null : trimmed;
   }, z.string().max(max).nullable());
 
-const e164Phone = z
-  .string()
-  .trim()
-  .regex(E164_PHONE_REGEX, "Phone must be a valid E.164 number (e.g. +919876543210)");
-
-const locationSchema = z.object({
-  addressText: trimmedNonEmpty(MAX_ADDRESS_LENGTH, "Address"),
-  contactName: trimmedNonEmpty(MAX_CONTACT_NAME_LENGTH, "Contact name"),
-  contactPhone: e164Phone,
-  instructions: optionalTrimmed(MAX_INSTRUCTIONS_LENGTH),
-});
+const locationSchema = z
+  .object({
+    addressText: trimmedNonEmpty(MAX_ADDRESS_LENGTH, "Address"),
+    contactName: trimmedNonEmpty(MAX_CONTACT_NAME_LENGTH, "Contact name"),
+    contactPhone: phoneInputSchema,
+    instructions: optionalTrimmed(MAX_INSTRUCTIONS_LENGTH),
+    latitude: z
+      .number()
+      .min(MIN_LATITUDE, "Latitude must be between -90 and 90")
+      .max(MAX_LATITUDE, "Latitude must be between -90 and 90")
+      .nullable()
+      .optional(),
+    longitude: z
+      .number()
+      .min(MIN_LONGITUDE, "Longitude must be between -180 and 180")
+      .max(MAX_LONGITUDE, "Longitude must be between -180 and 180")
+      .nullable()
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasLatitude = data.latitude != null;
+    const hasLongitude = data.longitude != null;
+    if (hasLatitude !== hasLongitude) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["latitude"],
+        message: "latitude and longitude must be provided together",
+      });
+    }
+  });
 
 const photoSchema = z.object({
   objectKey: z

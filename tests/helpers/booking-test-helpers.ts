@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { storedPhone } from "./phone-test-helpers.js";
 import type { InMemoryDeliveryRepository } from "./in-memory-delivery-repository.js";
 import type { InMemoryOrchestrationRepository } from "./in-memory-orchestration-repository.js";
 import type { InMemoryProviderRepository } from "./in-memory-provider-repository.js";
 import { seedOrchestrationMockProvider } from "./provider-adapter-test-helpers.js";
+import { defaultCancellationPolicySnapshot } from "./cancellation-policy-test-helpers.js";
 
 export async function seedOptionReadyDelivery(input: {
   deliveryRepo: InMemoryDeliveryRepository;
@@ -27,14 +29,18 @@ export async function seedOptionReadyDelivery(input: {
     pickup: {
       addressText: "Pickup",
       contactName: "A",
-      contactPhone: "+919876543210",
+      ...storedPhone("+91", "9876543210"),
       instructions: null,
+      latitude: null,
+      longitude: null,
     },
     drop: {
       addressText: "Drop",
       contactName: "B",
-      contactPhone: "+919811122233",
+      ...storedPhone("+91", "9811122233"),
       instructions: null,
+      latitude: null,
+      longitude: null,
     },
     package: {
       packageType: "FOOD",
@@ -50,7 +56,7 @@ export async function seedOptionReadyDelivery(input: {
     requirements: [],
     specialInstructions: null,
     schedule: { mode: "ASAP", timezone: "Asia/Kolkata" },
-    complianceAcceptedAt: new Date(),
+    compliance: { accepted: true, acceptedAt: new Date() },
   });
 
   await input.deliveryRepo.transitionStatus({
@@ -131,6 +137,7 @@ export async function seedOptionReadyDelivery(input: {
     },
     availabilitySnapshot: { known: false },
     etaSnapshot: null,
+    cancellationPolicySnapshot: defaultCancellationPolicySnapshot(),
   });
 
   return {

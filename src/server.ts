@@ -15,6 +15,9 @@ async function bootstrap(): Promise<void> {
       { port: env.PORT, env: env.NODE_ENV },
       "Dutt backend listening",
     );
+    if (env.NODE_ENV === "development") {
+      console.log(`✓ Backend ready on http://localhost:${env.PORT}`);
+    }
   });
 
   let shuttingDown = false;
