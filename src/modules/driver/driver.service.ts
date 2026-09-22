@@ -13,20 +13,18 @@ import {
 } from "../delivery/delivery-lifecycle.service.js";
 import { requireBookedProviderBooking } from "../operations/operational-context.js";
 import type { NormalizedDriver } from "../provider/contracts/common.js";
+import type { NormalizedTrackingResult } from "../provider/contracts/tracking.js";
 import {
-  ProviderAdapterExecutor,
-  providerAdapterExecutor,
-} from "../provider/adapters/provider-adapter-executor.js";
+  operationalRefreshService,
+  type OperationalRefreshService,
+} from "../operations/operational-refresh.service.js";
 import type { AdapterExecutionContext } from "../provider/adapters/provider-adapter.types.js";
 import {
   bookingRepository,
   type IBookingRepository,
 } from "../booking/booking.repository.js";
 import { toAdminDriverResponse, toCustomerDriverResponse } from "./driver.mapper.js";
-import {
-  driverRepository,
-  type IDriverRepository,
-} from "./driver.repository.js";
+import { driverRepository, type IDriverRepository } from "./driver.repository.js";
 import type { UpsertDriverInput } from "./driver.types.js";
 
 function mapDriverFields(driver: NormalizedDriver | null) {
@@ -62,14 +60,10 @@ export class DriverService {
     private readonly bookingRepo: IBookingRepository = bookingRepository,
     private readonly driverRepo: IDriverRepository = driverRepository,
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
-    private readonly adapterExecutor: ProviderAdapterExecutor = providerAdapterExecutor,
+    private readonly operationalRefresh: OperationalRefreshService = operationalRefreshService,
   ) {}
 
-  async getDriver(input: {
-    deliveryId: string;
-    userId: string;
-    role: UserRole;
-  }) {
+  async getDriver(input: { deliveryId: string; userId: string; role: UserRole }) {
     await loadAuthorizedDelivery(
       this.deliveryRepo,
       input.deliveryId,
@@ -92,45 +86,22 @@ export class DriverService {
     requestId: string;
     testHints?: AdapterExecutionContext["testHints"];
   }) {
-    const delivery = await loadAuthorizedDelivery(
+    await loadAuthorizedDelivery(
       this.deliveryRepo,
       input.deliveryId,
       input.userId,
       input.role,
     );
-    const booking = await requireBookedProviderBooking(
-      input.deliveryId,
-      this.bookingRepo,
-    );
+    const refresh = await this.operationalRefresh.refreshFromProvider({
+      deliveryId: input.deliveryId,
+      requestId: input.requestId,
+      source: "ADMIN_DRIVER_REFRESH",
+      failureMode: "preserve",
+      testHints: input.testHints,
+    });
 
-    let driver: NormalizedDriver | null = null;
-    let assigned = false;
-    let providerStatus: string | null = null;
-    let pollSucceeded = false;
-
-    try {
-      const tracking = await this.adapterExecutor.execute({
-        providerCode: booking.providerCode,
-        operation: "getTracking",
-        payload: {
-          providerBookingId: booking.providerOrderId!,
-          deliveryReference: delivery.reference,
-        },
-        requestId: input.requestId,
-        testHints: input.testHints,
-      });
-      driver = tracking.driver;
-      providerStatus = tracking.status;
-      pollSucceeded = true;
-      assigned = driver != null;
-    } catch {
-      // pollSucceeded remains false — preserve any existing assigned snapshot below.
-    }
-
-    if (!pollSucceeded) {
-      const existing = await this.driverRepo.findActiveByDeliveryId(
-        input.deliveryId,
-      );
+    if (!refresh.pollSucceeded) {
+      const existing = await this.driverRepo.findActiveByDeliveryId(input.deliveryId);
       if (existing) {
         return {
           success: true as const,
@@ -139,22 +110,41 @@ export class DriverService {
       }
     }
 
-    const result = await this.upsertFromProvider({
-      deliveryId: input.deliveryId,
-      deliveryStatus: delivery.status,
-      providerBookingId: booking.id,
-      providerId: booking.providerId,
-      driver,
-      known: pollSucceeded,
-      assigned,
-      source: "PROVIDER_POLL",
-      providerStatus,
-    });
+    if (refresh.driverAssignment) {
+      return {
+        success: true as const,
+        data: toCustomerDriverResponse(refresh.driverAssignment),
+      };
+    }
 
+    const fallback = await this.driverRepo.findActiveByDeliveryId(input.deliveryId);
     return {
       success: true as const,
-      data: toCustomerDriverResponse(result),
+      data: toCustomerDriverResponse(fallback),
     };
+  }
+
+  async ingestFromPoll(input: {
+    deliveryId: string;
+    deliveryStatus: DeliveryStatus;
+    providerBookingId: string;
+    providerId: string;
+    tracking: NormalizedTrackingResult;
+  }) {
+    const driver = input.tracking.driver;
+    const assigned = driver != null;
+
+    return this.upsertFromProvider({
+      deliveryId: input.deliveryId,
+      deliveryStatus: input.deliveryStatus,
+      providerBookingId: input.providerBookingId,
+      providerId: input.providerId,
+      driver,
+      known: true,
+      assigned,
+      source: "PROVIDER_POLL",
+      providerStatus: input.tracking.status,
+    });
   }
 
   async upsertFromWebhook(
@@ -180,10 +170,7 @@ export class DriverService {
       this.bookingRepo,
     );
 
-    if (
-      delivery.status !== "BOOKED" &&
-      delivery.status !== "DRIVER_ASSIGNED"
-    ) {
+    if (delivery.status !== "BOOKED" && delivery.status !== "DRIVER_ASSIGNED") {
       throw new AppError(
         "Driver simulation is not allowed for the current delivery status.",
         {
@@ -241,25 +228,21 @@ export class DriverService {
       existingAssigned && !input.assigned
         ? {
             providerDriverId:
-              incomingFields.providerDriverId ??
-              existingAssigned.providerDriverId,
+              incomingFields.providerDriverId ?? existingAssigned.providerDriverId,
             driverName: incomingFields.driverName ?? existingAssigned.driverName,
             driverPhoneCountryCode:
               incomingFields.driverPhoneCountryCode ??
               existingAssigned.driverPhoneCountryCode,
             driverPhoneNumber:
-              incomingFields.driverPhoneNumber ??
-              existingAssigned.driverPhoneNumber,
+              incomingFields.driverPhoneNumber ?? existingAssigned.driverPhoneNumber,
             driverPhotoUrl:
               incomingFields.driverPhotoUrl ?? existingAssigned.driverPhotoUrl,
             providerRating:
               incomingFields.providerRating ?? existingAssigned.providerRating,
-            vehicleType:
-              incomingFields.vehicleType ?? existingAssigned.vehicleType,
+            vehicleType: incomingFields.vehicleType ?? existingAssigned.vehicleType,
             vehicleNumber:
               incomingFields.vehicleNumber ?? existingAssigned.vehicleNumber,
-            assignedAt:
-              incomingFields.assignedAt ?? existingAssigned.assignedAt,
+            assignedAt: incomingFields.assignedAt ?? existingAssigned.assignedAt,
           }
         : incomingFields;
     const status = input.assigned

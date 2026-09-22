@@ -127,6 +127,15 @@ const envSchema = z
       z.string().url().default("https://api.msg91.com/api/v5"),
     ),
     MSG91_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+
+    OPERATIONAL_POLLING_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    OPERATIONAL_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+
+    OPERATIONAL_POLL_BATCH_SIZE: z.coerce.number().int().positive().default(50),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "test" && !data.JWT_ACCESS_SECRET) {

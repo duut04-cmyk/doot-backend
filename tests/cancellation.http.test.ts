@@ -11,14 +11,13 @@ import { CancellationController } from "../src/modules/cancellation/cancellation
 import { CancellationService } from "../src/modules/cancellation/cancellation.service.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import { DriverController } from "../src/modules/driver/driver.controller.js";
-import { DriverService } from "../src/modules/driver/driver.service.js";
 import { createOperationalRouter } from "../src/modules/operations/operational.routes.js";
 import { OtpController } from "../src/modules/otp/otp.controller.js";
 import { OtpService } from "../src/modules/otp/otp.service.js";
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
-import { TrackingService } from "../src/modules/tracking/tracking.service.js";
+import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
 import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
@@ -88,10 +87,15 @@ describe("Cancellation HTTP", () => {
     const executor = {
       execute: executeMock,
     } as unknown as ProviderAdapterExecutor;
+    const { driverService, trackingService } = createOperationalServices({
+      deliveryRepo,
+      bookingRepo,
+      driverRepo,
+      trackingRepo,
+      executeMock,
+    });
 
-    const driverController = new DriverController(
-      new DriverService(deliveryRepo, bookingRepo, driverRepo, lifecycle, executor),
-    );
+    const driverController = new DriverController(driverService);
     const otpController = new OtpController(
       new OtpService(
         deliveryRepo,
@@ -101,9 +105,7 @@ describe("Cancellation HTTP", () => {
         createNoopEmailSender(),
       ),
     );
-    const trackingController = new TrackingController(
-      new TrackingService(deliveryRepo, bookingRepo, trackingRepo, lifecycle, executor),
-    );
+    const trackingController = new TrackingController(trackingService);
     const cancellationController = new CancellationController(
       new CancellationService(
         deliveryRepo,

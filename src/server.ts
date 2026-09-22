@@ -2,6 +2,8 @@ import { createApp } from "./app.js";
 import { disconnectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
+import { configureOperationalRefresh } from "./modules/operations/operational-bootstrap.js";
+import { operationalPollingService } from "./modules/operations/operational-polling.service.js";
 import { initializeProviderAdapters } from "./modules/provider/adapters/bootstrap.js";
 
 async function bootstrap(): Promise<void> {
@@ -9,12 +11,14 @@ async function bootstrap(): Promise<void> {
   // This keeps health/Swagger available without a live Postgres instance.
 
   initializeProviderAdapters();
+  configureOperationalRefresh();
   const app = createApp();
   const server = app.listen(env.PORT, "0.0.0.0", () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, "Dutt backend listening");
     if (env.NODE_ENV === "development") {
       console.log(`✓ Backend ready on http://localhost:${env.PORT}`);
     }
+    operationalPollingService.start();
   });
 
   let shuttingDown = false;
@@ -26,6 +30,8 @@ async function bootstrap(): Promise<void> {
     shuttingDown = true;
 
     logger.info({ signal }, "Shutting down gracefully");
+
+    operationalPollingService.stop();
 
     server.close(async (closeError) => {
       if (closeError) {

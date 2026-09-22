@@ -27,7 +27,6 @@ describe("Borzo webhook HTTP endpoint", () => {
   let service: BorzoWebhookService;
 
   beforeEach(() => {
-    process.env.BORZO_CALLBACK_SECRET = TEST_SECRET;
     repo = new InMemoryProviderWebhookEventRepository();
     service = new BorzoWebhookService(repo, new ProviderWebhookProcessor());
   });

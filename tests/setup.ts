@@ -18,5 +18,5 @@ process.env.FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 process.env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY =
   process.env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY ||
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-process.env.BORZO_CALLBACK_SECRET =
-  process.env.BORZO_CALLBACK_SECRET || "test-borzo-callback-secret-min-16-chars";
+// Force the webhook test secret so cached env.ts never picks up a developer .env value.
+process.env.BORZO_CALLBACK_SECRET = "test-borzo-callback-secret-min-16-chars";

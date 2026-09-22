@@ -7,7 +7,6 @@ import { errorHandlerMiddleware } from "../src/core/middleware/error-handler.js"
 import { notFoundMiddleware } from "../src/core/middleware/not-found.js";
 import { requestIdMiddleware } from "../src/core/middleware/request-id.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
-import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import {
   createAdminOperationalRouter,
   createOperationalRouter,
@@ -19,7 +18,7 @@ import { ProviderAdapterRegistry } from "../src/modules/provider/adapters/provid
 import { ProviderAdapterResolver } from "../src/modules/provider/adapters/provider-adapter-resolver.js";
 import { ProviderConfigResolver } from "../src/modules/provider/adapters/provider-config-resolver.js";
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
-import { TrackingService } from "../src/modules/tracking/tracking.service.js";
+import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
@@ -88,13 +87,12 @@ describe("Tracking refresh HTTP", () => {
       new ProviderConfigResolver(providerRepo),
     );
     const executor = new ProviderAdapterExecutor(resolver);
-    const trackingService = new TrackingService(
+    const { trackingService } = createOperationalServices({
       deliveryRepo,
       bookingRepo,
       trackingRepo,
-      new DeliveryLifecycleService(deliveryRepo),
-      executor,
-    );
+      adapterExecutor: executor,
+    });
     const trackingController = new TrackingController(trackingService);
     const authenticate = createAuthenticateMiddleware(authRepo);
 

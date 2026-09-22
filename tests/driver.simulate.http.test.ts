@@ -1,6 +1,6 @@
 import express from "express";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createAuthenticateMiddleware } from "../src/core/middleware/authenticate.js";
 import { errorHandlerMiddleware } from "../src/core/middleware/error-handler.js";
 import { notFoundMiddleware } from "../src/core/middleware/not-found.js";
@@ -13,7 +13,6 @@ import {
   createAdminOperationalRouter,
   createOperationalRouter,
 } from "../src/modules/operations/operational.routes.js";
-import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
@@ -40,7 +39,6 @@ describe("Driver simulation HTTP", () => {
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let providerRepo: InMemoryProviderRepository;
   let authRepo: InMemoryAuthRepository;
-  let executeMock: ReturnType<typeof vi.fn>;
   let customerId: string;
   let customerToken: string;
   let adminToken: string;
@@ -52,8 +50,6 @@ describe("Driver simulation HTTP", () => {
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
     authRepo = new InMemoryAuthRepository();
-    executeMock = vi.fn();
-
     const customer = await authRepo.createUser({
       name: "Customer",
       email: "simulate-customer@example.com",
@@ -76,15 +72,11 @@ describe("Driver simulation HTTP", () => {
 
   function buildApp(options?: { enableDriverSimulation?: boolean }) {
     const lifecycle = new DeliveryLifecycleService(deliveryRepo);
-    const executor = {
-      execute: executeMock,
-    } as unknown as ProviderAdapterExecutor;
     const driverService = new DriverService(
       deliveryRepo,
       bookingRepo,
       driverRepo,
       lifecycle,
-      executor,
     );
     const driverController = new DriverController(driverService);
     const authenticate = createAuthenticateMiddleware(authRepo);
@@ -266,8 +258,7 @@ describe("Driver simulation HTTP", () => {
       .send({ ...simulatePayload, driverName: "Updated Driver" });
 
     const assigned = driverRepo.assignments.filter(
-      (item) =>
-        item.deliveryId === seeded.deliveryId && item.status === "ASSIGNED",
+      (item) => item.deliveryId === seeded.deliveryId && item.status === "ASSIGNED",
     );
     expect(assigned).toHaveLength(1);
     expect(assigned[0]?.driverName).toBe("Updated Driver");

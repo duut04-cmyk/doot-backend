@@ -9,30 +9,20 @@ import {
   deliveryLifecycleService,
   type DeliveryLifecycleService,
 } from "../delivery/delivery-lifecycle.service.js";
-import { requireBookedProviderBooking } from "../operations/operational-context.js";
-import {
-  bookingRepository,
-  type IBookingRepository,
-} from "../booking/booking.repository.js";
 import type { NormalizedTrackingResult } from "../provider/contracts/tracking.js";
 import type { NormalizedProviderWebhookEvent } from "../provider/contracts/webhook.js";
 import {
-  ProviderAdapterExecutor,
-  providerAdapterExecutor,
-} from "../provider/adapters/provider-adapter-executor.js";
+  operationalRefreshService,
+  type OperationalRefreshService,
+} from "../operations/operational-refresh.service.js";
 import type { AdapterExecutionContext } from "../provider/adapters/provider-adapter.types.js";
 import {
   normalizeProviderTrackingStatus,
   validateCoordinates,
 } from "./tracking.normalization.js";
-import {
-  trackingRepository,
-  type ITrackingRepository,
-} from "./tracking.repository.js";
+import { trackingRepository, type ITrackingRepository } from "./tracking.repository.js";
 
-const TRACKING_STATUS_TO_DELIVERY: Partial<
-  Record<string, DeliveryStatus>
-> = {
+const TRACKING_STATUS_TO_DELIVERY: Partial<Record<string, DeliveryStatus>> = {
   PICKED_UP: "PICKED_UP",
   IN_TRANSIT: "IN_TRANSIT",
 };
@@ -40,17 +30,12 @@ const TRACKING_STATUS_TO_DELIVERY: Partial<
 export class TrackingService {
   constructor(
     private readonly deliveryRepo: IDeliveryRepository = deliveryRepository,
-    private readonly bookingRepo: IBookingRepository = bookingRepository,
     private readonly trackingRepo: ITrackingRepository = trackingRepository,
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
-    private readonly adapterExecutor: ProviderAdapterExecutor = providerAdapterExecutor,
+    private readonly operationalRefresh: OperationalRefreshService = operationalRefreshService,
   ) {}
 
-  async getTracking(input: {
-    deliveryId: string;
-    userId: string;
-    role: UserRole;
-  }) {
+  async getTracking(input: { deliveryId: string; userId: string; role: UserRole }) {
     const delivery = await loadAuthorizedDelivery(
       this.deliveryRepo,
       input.deliveryId,
@@ -124,38 +109,39 @@ export class TrackingService {
     requestId: string;
     testHints?: AdapterExecutionContext["testHints"];
   }) {
-    const delivery = await loadAuthorizedDelivery(
+    await loadAuthorizedDelivery(
       this.deliveryRepo,
       input.deliveryId,
       input.userId,
       input.role,
     );
-    const booking = await requireBookedProviderBooking(
-      input.deliveryId,
-      this.bookingRepo,
-    );
 
-    const tracking = await this.adapterExecutor.execute({
-      providerCode: booking.providerCode,
-      operation: "getTracking",
-      payload: {
-        providerBookingId: booking.providerOrderId!,
-        deliveryReference: delivery.reference,
-      },
+    await this.operationalRefresh.refreshFromProvider({
+      deliveryId: input.deliveryId,
       requestId: input.requestId,
+      source: "ADMIN_TRACKING_REFRESH",
+      failureMode: "throw",
       testHints: input.testHints,
     });
 
-    await this.ingestTrackingResult({
+    return this.getTracking(input);
+  }
+
+  async ingestFromPoll(input: {
+    deliveryId: string;
+    deliveryStatus: DeliveryStatus;
+    providerBookingId: string;
+    providerId: string;
+    tracking: NormalizedTrackingResult;
+  }) {
+    return this.ingestTrackingResult({
       deliveryId: input.deliveryId,
-      deliveryStatus: delivery.status,
-      providerBookingId: booking.id,
-      providerId: booking.providerId,
-      tracking,
+      deliveryStatus: input.deliveryStatus,
+      providerBookingId: input.providerBookingId,
+      providerId: input.providerId,
+      tracking: input.tracking,
       source: "PROVIDER_POLL",
     });
-
-    return this.getTracking(input);
   }
 
   async ingestFromWebhook(input: {
@@ -230,7 +216,10 @@ export class TrackingService {
       ))
     ) {
       logger.info(
-        { deliveryId: input.deliveryId, providerEventId: input.tracking.providerEventId },
+        {
+          deliveryId: input.deliveryId,
+          providerEventId: input.tracking.providerEventId,
+        },
         "tracking.ignored",
       );
       return null;
@@ -267,10 +256,7 @@ export class TrackingService {
       normalizedStatus,
     });
 
-    logger.info(
-      { deliveryId: input.deliveryId, normalizedStatus },
-      "tracking.updated",
-    );
+    logger.info({ deliveryId: input.deliveryId, normalizedStatus }, "tracking.updated");
 
     return point;
   }

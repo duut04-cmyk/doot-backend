@@ -7,12 +7,12 @@ import { errorHandlerMiddleware } from "../src/core/middleware/error-handler.js"
 import { requestIdMiddleware } from "../src/core/middleware/request-id.js";
 import { CancellationService } from "../src/modules/cancellation/cancellation.service.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
-import { DriverService } from "../src/modules/driver/driver.service.js";
 import { createAdminOperationalRouter } from "../src/modules/operations/operational.routes.js";
 import { OtpService } from "../src/modules/otp/otp.service.js";
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
+import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
 import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
@@ -81,10 +81,8 @@ describe("Phase 7 audit fixes", () => {
 
     const tracking = new TrackingService(
       deliveryRepo,
-      bookingRepo,
       trackingRepo,
       new DeliveryLifecycleService(deliveryRepo),
-      { execute: vi.fn() } as unknown as ProviderAdapterExecutor,
     );
 
     await tracking.ingestFromWebhook({
@@ -138,13 +136,12 @@ describe("Phase 7 audit fixes", () => {
       providerStatus: "assigned",
     });
 
-    const service = new DriverService(
+    const { driverService: service } = createOperationalServices({
       deliveryRepo,
       bookingRepo,
       driverRepo,
-      new DeliveryLifecycleService(deliveryRepo),
-      { execute: executeMock } as unknown as ProviderAdapterExecutor,
-    );
+      executeMock,
+    });
 
     const result = await service.refreshFromProvider({
       deliveryId: seeded.deliveryId,
