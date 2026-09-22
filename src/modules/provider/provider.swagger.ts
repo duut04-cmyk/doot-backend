@@ -36,7 +36,7 @@ const providerSummarySchema = {
   type: "object",
   properties: {
     id: { type: "string", format: "uuid" },
-    code: { type: "string", example: "BORZO" },
+    code: { type: "string", example: "MOCK" },
     name: { type: "string" },
     displayName: { type: "string", nullable: true },
     environment: { type: "string", enum: ["SANDBOX", "LIVE"] },
@@ -99,8 +99,8 @@ export const providerSwaggerPaths = {
               type: "object",
               required: ["code", "name"],
               properties: {
-                code: { type: "string", example: "BORZO" },
-                name: { type: "string", example: "Borzo" },
+                code: { type: "string", example: "MOCK" },
+                name: { type: "string", example: "Mock Provider" },
                 displayName: { type: "string", nullable: true },
                 description: { type: "string", nullable: true },
                 environment: { type: "string", enum: ["SANDBOX", "LIVE"] },
@@ -166,10 +166,18 @@ export const providerSwaggerPaths = {
       summary: "Get provider configuration",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
-        200: { description: "Provider detail (credential metadata only, never secret values)" },
+        200: {
+          description:
+            "Provider detail (credential metadata only, never secret values)",
+        },
         401: admin401,
         403: admin403,
         404: { description: "Not found" },
@@ -180,7 +188,12 @@ export const providerSwaggerPaths = {
       summary: "Update provider configuration",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       requestBody: {
         required: true,
@@ -200,7 +213,12 @@ export const providerSwaggerPaths = {
       summary: "Update provider lifecycle status",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       requestBody: {
         required: true,
@@ -232,7 +250,12 @@ export const providerSwaggerPaths = {
         "Secrets are encrypted at rest (AES-256-GCM). Response never echoes credential values.",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       requestBody: {
         required: true,
@@ -244,7 +267,8 @@ export const providerSwaggerPaths = {
                 API_KEY: { type: "string", writeOnly: true },
                 API_SECRET: { type: "string", writeOnly: true },
               },
-              description: "At least one credential field required. Values are write-only.",
+              description:
+                "At least one credential field required. Values are write-only.",
             },
           },
         },
@@ -278,7 +302,12 @@ export const providerSwaggerPaths = {
       summary: "Replace provider capabilities",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       requestBody: {
         required: true,
@@ -307,16 +336,30 @@ export const providerSwaggerPaths = {
       summary: "Add provider service configuration",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
-      responses: { 201: { description: "Service created" }, 401: admin401, 403: admin403 },
+      responses: {
+        201: { description: "Service created" },
+        401: admin401,
+        403: admin403,
+      },
     },
     get: {
       tags: ["Admin Providers"],
       summary: "List provider services",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: { 200: { description: "Service list" }, 401: admin401, 403: admin403 },
     },
@@ -327,7 +370,12 @@ export const providerSwaggerPaths = {
       summary: "Update or disable a provider service",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
         {
           name: "serviceId",
           in: "path",
@@ -335,7 +383,11 @@ export const providerSwaggerPaths = {
           schema: { type: "string", format: "uuid" },
         },
       ],
-      responses: { 200: { description: "Service updated" }, 401: admin401, 403: admin403 },
+      responses: {
+        200: { description: "Service updated" },
+        401: admin401,
+        403: admin403,
+      },
     },
   },
   "/api/v1/admin/providers/{id}/vehicles": {
@@ -344,16 +396,30 @@ export const providerSwaggerPaths = {
       summary: "Add provider vehicle configuration",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
-      responses: { 201: { description: "Vehicle created" }, 401: admin401, 403: admin403 },
+      responses: {
+        201: { description: "Vehicle created" },
+        401: admin401,
+        403: admin403,
+      },
     },
     get: {
       tags: ["Admin Providers"],
       summary: "List provider vehicles",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: { 200: { description: "Vehicle list" }, 401: admin401, 403: admin403 },
     },
@@ -364,7 +430,12 @@ export const providerSwaggerPaths = {
       summary: "Update provider vehicle configuration",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
         {
           name: "vehicleId",
           in: "path",
@@ -372,7 +443,11 @@ export const providerSwaggerPaths = {
           schema: { type: "string", format: "uuid" },
         },
       ],
-      responses: { 200: { description: "Vehicle updated" }, 401: admin401, 403: admin403 },
+      responses: {
+        200: { description: "Vehicle updated" },
+        401: admin401,
+        403: admin403,
+      },
     },
   },
   "/api/v1/admin/providers/{id}/test-connection": {
@@ -383,7 +458,12 @@ export const providerSwaggerPaths = {
         "Executes a safe provider health check using configured credentials. Does not create orders.",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       responses: {
         200: {
@@ -397,7 +477,7 @@ export const providerSwaggerPaths = {
                   data: {
                     type: "object",
                     properties: {
-                      providerCode: { type: "string", example: "BORZO" },
+                      providerCode: { type: "string", example: "MOCK" },
                       environment: { type: "string", enum: ["SANDBOX", "LIVE"] },
                       connected: { type: "boolean" },
                       latencyMs: { type: "integer" },
@@ -413,76 +493,6 @@ export const providerSwaggerPaths = {
       },
     },
   },
-  "/api/v1/providers/borzo/webhooks": {
-    post: {
-      tags: ["Provider Webhooks"],
-      summary: "Receive Borzo callback events",
-      description:
-        "Public webhook endpoint (no JWT). Requires HMAC-SHA256 signature in X-DV-Signature over the raw JSON body using BORZO_CALLBACK_SECRET. Events are persisted idempotently and normalized to Dutt webhook contracts. Delivery status is not updated in Phase 4B.",
-      security: [],
-      parameters: [
-        {
-          name: "X-DV-Signature",
-          in: "header",
-          required: true,
-          schema: { type: "string" },
-          description: "HMAC-SHA256 hex digest of the raw request body.",
-        },
-      ],
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["event_type", "event_datetime"],
-              properties: {
-                event_type: {
-                  type: "string",
-                  enum: [
-                    "order_created",
-                    "order_changed",
-                    "delivery_created",
-                    "delivery_changed",
-                  ],
-                },
-                event_datetime: { type: "string", format: "date-time" },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        200: {
-          description: "Webhook accepted (including idempotent duplicates)",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["received"],
-                properties: {
-                  received: { type: "boolean", example: true },
-                  duplicate: { type: "boolean", example: false },
-                },
-              },
-            },
-          },
-        },
-        400: {
-          description: "Invalid JSON or payload validation failure",
-          content: { "application/json": { schema: providerErrorSchema } },
-        },
-        401: {
-          description: "Missing or invalid X-DV-Signature",
-          content: { "application/json": { schema: providerErrorSchema } },
-        },
-        500: {
-          description: "Processing failure after persistence",
-          content: { "application/json": { schema: providerErrorSchema } },
-        },
-      },
-    },
-  },
   "/api/v1/admin/providers/{id}/test-quote": {
     post: {
       tags: ["Admin Providers"],
@@ -491,7 +501,12 @@ export const providerSwaggerPaths = {
         "Calculates a provider quote without booking. Returns Dutt normalized quote, serviceability, and availability.",
       security: adminSecurity,
       parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
       ],
       requestBody: {
         required: true,
@@ -522,7 +537,10 @@ export const providerSwaggerPaths = {
                 package: {
                   type: "object",
                   properties: {
-                    packageType: { type: "string", enum: ["DOCUMENT", "FOOD", "MEDICINE", "OTHER"] },
+                    packageType: {
+                      type: "string",
+                      enum: ["DOCUMENT", "FOOD", "MEDICINE", "OTHER"],
+                    },
                     weightKg: { type: "number" },
                     quantity: { type: "integer" },
                   },
@@ -552,7 +570,7 @@ export const providerSwaggerPaths = {
                   data: {
                     type: "object",
                     properties: {
-                      providerCode: { type: "string", example: "BORZO" },
+                      providerCode: { type: "string", example: "MOCK" },
                       availability: {
                         type: "object",
                         properties: {

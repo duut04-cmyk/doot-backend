@@ -122,7 +122,7 @@ export function phoneFromE164(
   };
 }
 
-/** Parse provider-supplied digit strings (e.g. Borzo `919876543210`). */
+/** Parse provider-supplied digit strings (e.g. `919876543210`). */
 export function phoneFromProviderDigits(
   digits: string,
   defaultCountry: CountryCode = "IN",

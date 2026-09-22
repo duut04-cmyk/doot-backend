@@ -62,17 +62,17 @@ npx prisma migrate dev
 
 ## Scripts
 
-| Script | Description |
-| --- | --- |
-| `npm run dev` | Start development server with hot reload |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm run start` | Run compiled server |
-| `npm run typecheck` | TypeScript check without emit |
-| `npm run lint` | ESLint |
-| `npm test` | Run tests once |
-| `npm run test:watch` | Vitest watch mode |
-| `npm run prisma:generate` | Generate Prisma Client |
-| `npm run prisma:validate` | Validate Prisma schema |
+| Script                    | Description                              |
+| ------------------------- | ---------------------------------------- |
+| `npm run dev`             | Start development server with hot reload |
+| `npm run build`           | Compile TypeScript to `dist/`            |
+| `npm run start`           | Run compiled server                      |
+| `npm run typecheck`       | TypeScript check without emit            |
+| `npm run lint`            | ESLint                                   |
+| `npm test`                | Run tests once                           |
+| `npm run test:watch`      | Vitest watch mode                        |
+| `npm run prisma:generate` | Generate Prisma Client                   |
+| `npm run prisma:validate` | Validate Prisma schema                   |
 
 ## Health check
 
@@ -175,10 +175,10 @@ Authenticated customers create, list, and retrieve **their own** deliveries. `PO
 
 Platform roles (exactly two):
 
-| Role | Meaning |
-|------|---------|
+| Role       | Meaning                                            |
+| ---------- | -------------------------------------------------- |
 | `CUSTOMER` | Default for public signup and Google-created users |
-| `ADMIN` | Privileged platform role |
+| `ADMIN`    | Privileged platform role                           |
 
 - Public signup and Google login always create `CUSTOMER`. Clients cannot send `role: "ADMIN"` to elevate themselves.
 - Access JWTs identify the user (`sub` + `type=access`) only. Authorization reads the current role from the database on each authenticated request.
@@ -232,7 +232,7 @@ ProviderAdapter (provider-specific code)
 Normalized Dutt contracts
 ```
 
-Phase 3 adds the adapter abstraction layer only — no real Borzo/Shadowfax/Shiprocket/Innofulfill HTTP integrations yet.
+Phase 3 adds the adapter abstraction layer only — no real Shadowfax/Shiprocket/Innofulfill HTTP integrations yet.
 
 - **Contracts:** normalized serviceability, availability, quote, booking, tracking, cancellation, and webhook types under `src/modules/provider/contracts/`
 - **Registry:** `ProviderAdapterRegistry` maps stable provider codes to adapter implementations
@@ -246,39 +246,11 @@ Phase 3 adds the adapter abstraction layer only — no real Borzo/Shadowfax/Ship
 ### Adding a real provider adapter (Phase 4)
 
 1. Add trusted sandbox/live base URLs in `provider.adapter-urls.ts`
-2. Implement `ProviderAdapter` for the provider (e.g. `BorzoAdapter`) using `ProviderHttpClient`
+2. Implement `ProviderAdapter` for the provider using `ProviderHttpClient`
 3. Map provider JSON to normalized contracts inside the adapter — keep provider-specific logic out of core services
 4. Register the adapter in `adapters/bootstrap.ts`
 5. Configure the provider via admin APIs (credentials, capabilities, services)
 6. Verify sandbox health/booking before setting `healthStatus: HEALTHY` and `integrationStatus: READY`
-
-### Borzo inbound webhooks (Phase 4B)
-
-Public endpoint (no JWT):
-
-```text
-POST /api/v1/providers/borzo/webhooks
-```
-
-- **Signature:** `X-DV-Signature` = HMAC-SHA256 hex digest of the **raw JSON body** using `BORZO_CALLBACK_SECRET`
-- **Events:** `order_created`, `order_changed`, `delivery_created`, `delivery_changed`
-- **Persistence:** idempotent `ProviderWebhookEvent` rows keyed by provider event key
-- **Processing:** normalized to `NormalizedProviderWebhookEvent`; delivery linking is stubbed in 4B (events marked `IGNORED` until booking exists)
-
-Environment:
-
-```env
-BORZO_CALLBACK_SECRET=your-shared-secret-min-16-chars
-BORZO_WEBHOOKS_ENABLED=true   # optional; enforces secret at startup outside test
-```
-
-Local smoke test (server must be running on port 5000):
-
-```bash
-BORZO_CALLBACK_SECRET=... npx tsx scripts/borzo-webhook-smoke.ts
-```
-
-Fixtures live under `tests/fixtures/borzo/`. Swagger documents the endpoint at `/api-docs`.
 
 ### Orchestration engine (Phase 5)
 
@@ -328,6 +300,7 @@ OPTION_READY → BOOKING → BOOKED
 - Material price changes return `409 BOOKING_OPTION_CHANGED` (no silent re-pricing)
 - Provider booking via `ProviderAdapterExecutor.createBooking` only — no direct provider HTTP in booking code
 - `UNKNOWN` outcomes do **not** trigger automatic create-order retry
+
 ### Driver, OTP, tracking, cancellation (Phase 7)
 
 Customer endpoints:
@@ -366,6 +339,7 @@ BOOKED → DRIVER_ASSIGNED → PICKUP_OTP_PENDING → PICKED_UP → IN_TRANSIT �
 - Cancellation mirrors booking idempotency; pre-booking statuses cancel locally; post-booking uses `ProviderAdapterExecutor.cancelBooking`
 - Provider webhooks link deliveries via `ProviderBooking.providerOrderId` and update driver/tracking operationally
 - Terminal statuses ignore stale webhook/tracking transitions
+
 ### Rating, feedback, historical delivery (Phase 8)
 
 Customer endpoints:

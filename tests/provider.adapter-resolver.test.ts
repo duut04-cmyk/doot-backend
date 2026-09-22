@@ -17,10 +17,7 @@ describe("Provider adapter resolver", () => {
     repo = new InMemoryProviderRepository();
     registry = new ProviderAdapterRegistry();
     registry.register(new MockProviderAdapter());
-    resolver = new ProviderAdapterResolver(
-      registry,
-      new ProviderConfigResolver(repo),
-    );
+    resolver = new ProviderAdapterResolver(registry, new ProviderConfigResolver(repo));
   });
 
   it("resolves provider with adapter and config when ready", async () => {
@@ -162,11 +159,10 @@ describe("Provider adapter resolver", () => {
 });
 
 describe("Provider adapter bootstrap", () => {
-  it("registers borzo and mock adapters idempotently in test env", () => {
+  it("registers mock adapter idempotently in test env", () => {
     const registry = new ProviderAdapterRegistry();
     initializeProviderAdapters(registry);
     initializeProviderAdapters(registry);
-    expect(registry.has("BORZO")).toBe(true);
     expect(registry.has("MOCK")).toBe(true);
   });
 });

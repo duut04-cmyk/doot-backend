@@ -65,26 +65,6 @@ const envSchema = z
       .optional()
       .default(false),
 
-    BORZO_SANDBOX_SMOKE_TEST: z
-      .preprocess((value) => value === "true" || value === true, z.boolean())
-      .optional()
-      .default(false),
-
-    BORZO_E2E_ENABLED: z
-      .preprocess((value) => value === "true" || value === true, z.boolean())
-      .optional()
-      .default(false),
-
-    BORZO_WEBHOOKS_ENABLED: z
-      .preprocess((value) => value === "true" || value === true, z.boolean())
-      .optional()
-      .default(false),
-
-    BORZO_CALLBACK_SECRET: z.preprocess(
-      emptyToUndefined,
-      z.string().min(16).optional(),
-    ),
-
     BOOKING_QUOTE_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
 
     BOOKING_PRICE_TOLERANCE_PERCENT: z.coerce.number().min(0).max(100).default(0),
@@ -144,19 +124,6 @@ const envSchema = z
         path: ["JWT_ACCESS_SECRET"],
         message:
           "JWT_ACCESS_SECRET is required outside the test environment (min 32 characters)",
-      });
-    }
-
-    if (
-      data.NODE_ENV !== "test" &&
-      data.BORZO_WEBHOOKS_ENABLED &&
-      !data.BORZO_CALLBACK_SECRET
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["BORZO_CALLBACK_SECRET"],
-        message:
-          "BORZO_CALLBACK_SECRET is required when BORZO_WEBHOOKS_ENABLED is true",
       });
     }
 
@@ -242,14 +209,6 @@ export function requireProviderCredentialsEncryptionKey(): Buffer {
     throw new Error("PROVIDER_CREDENTIALS_ENCRYPTION_KEY is not configured");
   }
   return decodeEncryptionKey(raw);
-}
-
-export function requireBorzoCallbackSecret(): string {
-  const secret = env.BORZO_CALLBACK_SECRET;
-  if (!secret) {
-    throw new Error("BORZO_CALLBACK_SECRET is not configured");
-  }
-  return secret;
 }
 
 export const DEFAULT_BOOKING_QUOTE_MAX_AGE_SECONDS = env.BOOKING_QUOTE_MAX_AGE_SECONDS;

@@ -1,6 +1,5 @@
 import type { ProviderCapability } from "@prisma/client";
 import { encryptCredential } from "../../src/modules/provider/provider.crypto.js";
-import { BORZO_PROVIDER_CODE } from "../../src/modules/provider/adapters/borzo/borzo.constants.js";
 import { MOCK_PROVIDER_CODE } from "../../src/modules/provider/adapters/mock/mock-provider.constants.js";
 import type { InMemoryProviderRepository } from "./in-memory-provider-repository.js";
 
@@ -122,64 +121,6 @@ export async function seedOrchestrationMockProvider(
     enabled: true,
     priority: 10,
   });
-
-  return provider.id;
-}
-
-const BORZO_DEFAULT_CAPABILITIES: ProviderCapability[] = [
-  "SERVICEABILITY",
-  "PRICING",
-  "BOOKING",
-  "CANCELLATION",
-  "LIVE_TRACKING",
-  "WEBHOOKS",
-];
-
-export async function seedBorzoProvider(
-  repo: InMemoryProviderRepository,
-  options?: {
-    enabled?: boolean;
-    integrationStatus?: "NOT_CONFIGURED" | "CONFIGURED" | "READY" | "ERROR";
-    capabilities?: ProviderCapability[];
-    accessToken?: string;
-  },
-): Promise<string> {
-  const provider = await repo.createProvider({
-    code: BORZO_PROVIDER_CODE,
-    name: "Borzo Test",
-    displayName: "Borzo",
-    description: "Borzo sandbox provider",
-    environment: "SANDBOX",
-    enabled: options?.enabled ?? true,
-    orchestrationEnabled: false,
-    priority: 20,
-    integrationStatus: options?.integrationStatus ?? "CONFIGURED",
-    settings: {
-      timeoutMs: 30000,
-      connectTimeoutMs: 10000,
-      maxRetries: 0,
-      retryDelayMs: 1000,
-      webhookEnabled: false,
-      healthCheckEnabled: true,
-      healthCheckIntervalMs: 300000,
-    },
-    capabilities: options?.capabilities ?? BORZO_DEFAULT_CAPABILITIES,
-  });
-
-  const encrypted = encryptCredential(options?.accessToken ?? "borzo-test-token");
-  await repo.createCredential({
-    providerId: provider.id,
-    fieldName: "ACCESS_TOKEN",
-    ciphertext: encrypted.ciphertext,
-    iv: encrypted.iv,
-    authTag: encrypted.authTag,
-  });
-
-  if (options?.integrationStatus) {
-    await repo.updateProvider(provider.id, {
-      integrationStatus: options.integrationStatus,
-    });
-  }
 
   return provider.id;
 }
