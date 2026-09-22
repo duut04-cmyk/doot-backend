@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCodes } from "../src/core/errors/error-codes.js";
-import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import { DriverService } from "../src/modules/driver/driver.service.js";
-import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
+import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
@@ -28,13 +27,12 @@ describe("DriverService", () => {
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
     executeMock = vi.fn();
-    service = new DriverService(
+    ({ driverService: service } = createOperationalServices({
       deliveryRepo,
       bookingRepo,
       driverRepo,
-      new DeliveryLifecycleService(deliveryRepo),
-      { execute: executeMock } as unknown as ProviderAdapterExecutor,
-    );
+      executeMock,
+    }));
   });
 
   it("returns unknown driver when no assignment exists", async () => {
@@ -212,8 +210,7 @@ describe("DriverService", () => {
     });
 
     const assigned = driverRepo.assignments.filter(
-      (item) =>
-        item.deliveryId === seeded.deliveryId && item.status === "ASSIGNED",
+      (item) => item.deliveryId === seeded.deliveryId && item.status === "ASSIGNED",
     );
     expect(assigned).toHaveLength(1);
     expect(assigned[0]?.driverName).toBe("Aman Singh Updated");

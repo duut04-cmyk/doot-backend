@@ -46,7 +46,6 @@ export type SettingsPoliciesDto = {
 
 export type SettingsFlagsDto = {
   mockProviderAdapter: boolean;
-  borzoWebhooksEnabled: boolean;
   developmentMode: boolean;
 };
 

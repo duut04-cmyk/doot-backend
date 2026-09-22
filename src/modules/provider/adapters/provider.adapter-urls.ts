@@ -14,9 +14,6 @@ const TRUSTED_PROVIDER_BASE_URLS: Record<
     SANDBOX: "https://mock-provider.test/sandbox",
     LIVE: "https://mock-provider.test/live",
   },
-  BORZO: {
-    SANDBOX: "https://robotapitest-in.borzodelivery.com/api/business/1.8",
-  },
 };
 
 export function resolveTrustedProviderBaseUrl(

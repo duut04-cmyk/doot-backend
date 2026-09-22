@@ -7,8 +7,6 @@ import type {
   IntegrationStatus,
 } from "./integration.types.js";
 
-const BORZO_WEBHOOK_PATH = "/api/v1/providers/borzo/webhooks";
-
 function statusLabel(status: IntegrationStatus): string {
   switch (status) {
     case "connected":
@@ -56,8 +54,6 @@ export class IntegrationService {
     const databaseConfigured = Boolean(env.DATABASE_URL);
     const databaseReachable = databaseConfigured ? await isDatabaseReachable() : false;
     const encryptionConfigured = isEncryptionConfigured();
-    const borzoSecretConfigured = Boolean(env.BORZO_CALLBACK_SECRET);
-    const borzoWebhooksEnabled = env.BORZO_WEBHOOKS_ENABLED;
 
     const categories: IntegrationCategoryDto[] = [
       {
@@ -160,32 +156,6 @@ export class IntegrationService {
         ],
       },
       {
-        id: "webhooks",
-        title: "Inbound webhooks",
-        description: "Provider callbacks into the Doot platform.",
-        items: [
-          item({
-            id: "borzo-webhooks",
-            name: "Borzo webhooks",
-            description: "Order and delivery status events from Borzo.",
-            category: "webhooks",
-            status: !borzoSecretConfigured
-              ? "not_configured"
-              : borzoWebhooksEnabled
-                ? "connected"
-                : "degraded",
-            usedBy: "Live delivery status updates from Borzo",
-            impact: "Without webhooks, status updates rely on polling only.",
-            metadata: {
-              webhookPath: BORZO_WEBHOOK_PATH,
-              secretConfigured: String(borzoSecretConfigured),
-              enabled: String(borzoWebhooksEnabled),
-            },
-            manageHref: "/providers",
-          }),
-        ],
-      },
-      {
         id: "security",
         title: "Security & secrets",
         description: "Encryption and signing configuration.",
@@ -198,17 +168,6 @@ export class IntegrationService {
             status: encryptionConfigured ? "connected" : "not_configured",
             usedBy: "Provider API credentials at rest",
             impact: "Provider credentials cannot be stored securely without this key.",
-            metadata: {},
-            manageHref: null,
-          }),
-          item({
-            id: "borzo-webhook-signing",
-            name: "Borzo webhook signing",
-            description: "HMAC verification for inbound Borzo webhook payloads.",
-            category: "security",
-            status: borzoSecretConfigured ? "connected" : "not_configured",
-            usedBy: "Borzo webhook endpoint",
-            impact: "Webhook signature verification cannot be enforced.",
             metadata: {},
             manageHref: null,
           }),

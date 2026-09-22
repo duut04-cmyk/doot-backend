@@ -4,8 +4,6 @@ import {
   ProviderAdapterRegistry,
   providerAdapterRegistry,
 } from "./provider-adapter-registry.js";
-import { BorzoAdapter } from "./borzo/borzo.adapter.js";
-import { BORZO_PROVIDER_CODE } from "./borzo/borzo.constants.js";
 import { MockProviderAdapter } from "./mock/mock-provider.adapter.js";
 import { MOCK_PROVIDER_CODE } from "./mock/mock-provider.constants.js";
 
@@ -18,15 +16,13 @@ export function initializeProviderAdapters(
     return;
   }
 
-  if (!registry.has(BORZO_PROVIDER_CODE)) {
-    registry.register(new BorzoAdapter());
-    logger.info({ providerCode: BORZO_PROVIDER_CODE }, "borzo_adapter_registered");
-  }
-
   if (env.NODE_ENV === "test" || env.ENABLE_MOCK_PROVIDER_ADAPTER) {
     if (!registry.has(MOCK_PROVIDER_CODE)) {
       registry.register(new MockProviderAdapter());
-      logger.info({ providerCode: MOCK_PROVIDER_CODE }, "mock_provider_adapter_registered");
+      logger.info(
+        { providerCode: MOCK_PROVIDER_CODE },
+        "mock_provider_adapter_registered",
+      );
     }
   }
 

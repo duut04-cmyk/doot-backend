@@ -19,7 +19,6 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:borzo-e2e": "vitest run tests/borzo.e2e.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "db:reset-data": "tsx scripts/reset-database-data.ts",

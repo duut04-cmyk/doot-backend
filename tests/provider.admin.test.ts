@@ -57,10 +57,7 @@ describe("Provider Phase 2 admin configuration", () => {
     const authenticate = createAuthenticateMiddleware(authRepo);
     app.use(
       "/api/v1/admin/providers",
-      createProviderAdminRouter(
-        new ProviderController(testService),
-        authenticate,
-      ),
+      createProviderAdminRouter(new ProviderController(testService), authenticate),
     );
     app.use(errorHandlerMiddleware);
     return app;
@@ -68,8 +65,8 @@ describe("Provider Phase 2 admin configuration", () => {
 
   async function createProviderViaService(overrides?: Record<string, unknown>) {
     const body = createProviderSchema.parse({
-      code: "BORZO",
-      name: "Borzo",
+      code: "MOCK",
+      name: "Mock Provider",
       environment: "SANDBOX",
       enabled: false,
       capabilities: ["SERVICEABILITY", "BOOKING"],
@@ -113,12 +110,12 @@ describe("Provider Phase 2 admin configuration", () => {
   describe("provider CRUD", () => {
     it("creates a provider and rejects duplicate code", async () => {
       const created = await createProviderViaService();
-      expect(created.data.code).toBe("BORZO");
+      expect(created.data.code).toBe("MOCK");
       expect(created.data.integrationStatus).toBe("NOT_CONFIGURED");
       expect(created.data.orchestrationEligible).toBe(false);
 
       await expect(
-        createProviderViaService({ code: "BORZO", name: "Duplicate" }),
+        createProviderViaService({ code: "MOCK", name: "Duplicate" }),
       ).rejects.toMatchObject({
         statusCode: 409,
         code: ErrorCodes.PROVIDER_CODE_ALREADY_EXISTS,
@@ -131,7 +128,7 @@ describe("Provider Phase 2 admin configuration", () => {
       expect(list.data).toHaveLength(1);
 
       const detail = await service.getProvider(created.data.id);
-      expect(detail.data.code).toBe("BORZO");
+      expect(detail.data.code).toBe("MOCK");
       expect(detail.data.settings.timeoutMs).toBe(30000);
     });
 
@@ -274,9 +271,9 @@ describe("Provider Phase 2 admin configuration", () => {
       expect(serialized).not.toContain(secret);
       expect(serialized).not.toContain(stored!.ciphertext);
       expect(detail.data.credentials.configured).toBe(true);
-      expect(detail.data.credentials.fields.find((f) => f.name === "API_KEY")?.configured).toBe(
-        true,
-      );
+      expect(
+        detail.data.credentials.fields.find((f) => f.name === "API_KEY")?.configured,
+      ).toBe(true);
     });
 
     it("credential PUT response does not echo secrets", async () => {
@@ -314,9 +311,8 @@ describe("Provider Phase 2 admin configuration", () => {
     });
 
     it("promotes to READY with HEALTHY after successful connection test", async () => {
-      const { initializeProviderAdapters } = await import(
-        "../src/modules/provider/adapters/bootstrap.js"
-      );
+      const { initializeProviderAdapters } =
+        await import("../src/modules/provider/adapters/bootstrap.js");
       initializeProviderAdapters();
 
       const created = await createProviderViaService({
@@ -374,13 +370,17 @@ describe("Provider Phase 2 admin configuration", () => {
       expect(providerRepo.auditLogs.length).toBeGreaterThanOrEqual(3);
       const serialized = JSON.stringify(providerRepo.auditLogs);
       expect(serialized).not.toContain("audit-secret-should-not-appear");
-      expect(providerRepo.auditLogs.some((log) => log.action === "PROVIDER_CREATED")).toBe(
+      expect(
+        providerRepo.auditLogs.some((log) => log.action === "PROVIDER_CREATED"),
+      ).toBe(true);
+      expect(
+        providerRepo.auditLogs.some(
+          (log) => log.action === "PROVIDER_CREDENTIALS_UPDATED",
+        ),
+      ).toBe(true);
+      expect(providerRepo.auditLogs.every((log) => log.requestId.length > 0)).toBe(
         true,
       );
-      expect(
-        providerRepo.auditLogs.some((log) => log.action === "PROVIDER_CREDENTIALS_UPDATED"),
-      ).toBe(true);
-      expect(providerRepo.auditLogs.every((log) => log.requestId.length > 0)).toBe(true);
     });
   });
 

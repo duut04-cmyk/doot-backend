@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
-import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
+import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
@@ -27,13 +26,12 @@ describe("Tracking failure resilience", () => {
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
     executeMock = vi.fn();
-    service = new TrackingService(
+    ({ trackingService: service } = createOperationalServices({
       deliveryRepo,
       bookingRepo,
       trackingRepo,
-      new DeliveryLifecycleService(deliveryRepo),
-      { execute: executeMock } as unknown as ProviderAdapterExecutor,
-    );
+      executeMock,
+    }));
   });
 
   it("does not persist tracking points when provider refresh times out", async () => {

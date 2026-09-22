@@ -55,7 +55,6 @@ export const settingsSwaggerPaths = {
                         type: "object",
                         properties: {
                           mockProviderAdapter: { type: "boolean" },
-                          borzoWebhooksEnabled: { type: "boolean" },
                           developmentMode: { type: "boolean" },
                         },
                       },

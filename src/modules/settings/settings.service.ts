@@ -53,7 +53,6 @@ export class SettingsService {
         },
         flags: {
           mockProviderAdapter: env.ENABLE_MOCK_PROVIDER_ADAPTER,
-          borzoWebhooksEnabled: env.BORZO_WEBHOOKS_ENABLED,
           developmentMode: env.NODE_ENV === "development",
         },
         checkedAt: new Date().toISOString(),
