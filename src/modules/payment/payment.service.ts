@@ -7,6 +7,7 @@ import type { QuoteSnapshot } from "../booking/booking.types.js";
 import { loadAuthorizedDelivery } from "../delivery/delivery-access.js";
 import {
   deliveryRepository,
+  type DeliveryWithRelations,
   type IDeliveryRepository,
 } from "../delivery/delivery.repository.js";
 import {
@@ -41,6 +42,17 @@ import type {
 import { canTransitionPayment, canTransitionRefund } from "./payment.transitions.js";
 
 const ACTIVE_CREATE_STATUSES = new Set<PaymentStatus>(["CREATED", "PENDING"]);
+
+function deliveryContactPhoneFallback(
+  delivery: Pick<DeliveryWithRelations, "pickup" | "drop">,
+): string | undefined {
+  for (const leg of [delivery.pickup, delivery.drop]) {
+    if (leg.contactPhoneCountryCode && leg.contactPhoneNumber) {
+      return `${leg.contactPhoneCountryCode}${leg.contactPhoneNumber}`;
+    }
+  }
+  return undefined;
+}
 
 export class PaymentService {
   constructor(
@@ -117,6 +129,7 @@ export class PaymentService {
             currency: pricing.currency,
             customerId: delivery.customerId,
             customerReference: delivery.reference,
+            customerPhoneFallback: deliveryContactPhoneFallback(delivery),
           });
         }
         const latestAttempt = await this.paymentRepo.findLatestAttempt(existing.id);
@@ -159,6 +172,7 @@ export class PaymentService {
       currency: pricing.currency,
       customerId: delivery.customerId,
       customerReference: delivery.reference,
+      customerPhoneFallback: deliveryContactPhoneFallback(delivery),
     });
 
     const latestAttempt = await this.paymentRepo.findLatestAttempt(payment.id);
@@ -648,15 +662,15 @@ export class PaymentService {
     );
   }
 
-  private async loadGatewayCustomer(customerId: string) {
+  private async loadGatewayCustomer(customerId: string, phoneFallback?: string) {
     const user = await authRepository.findUserById(customerId);
     if (!user) {
-      return { customerId };
+      return { customerId, phone: phoneFallback };
     }
     const phone =
       user.phoneCountryCode && user.phoneNumber
         ? `${user.phoneCountryCode}${user.phoneNumber}`
-        : user.phoneNumber;
+        : (user.phoneNumber ?? phoneFallback);
     return {
       customerId,
       email: user.email,
@@ -671,6 +685,7 @@ export class PaymentService {
     currency: typeof DEFAULT_PAYMENT_CURRENCY;
     customerId: string;
     customerReference: string;
+    customerPhoneFallback?: string;
   }): Promise<PaymentDto> {
     if (
       input.payment.gatewayOrderId &&
@@ -694,7 +709,10 @@ export class PaymentService {
     }
 
     const gateway = getPaymentGateway(this.gatewayCode);
-    const customer = await this.loadGatewayCustomer(input.customerId);
+    const customer = await this.loadGatewayCustomer(
+      input.customerId,
+      input.customerPhoneFallback,
+    );
 
     let order;
     try {
