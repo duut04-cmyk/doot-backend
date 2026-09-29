@@ -82,7 +82,14 @@ async function ensureUser(prisma: PrismaClient, email: string) {
   if (existing) {
     await prisma.user.update({
       where: { id: existing.id },
-      data: { passwordHash, emailVerified: true, status: "ACTIVE", role: "CUSTOMER" },
+      data: {
+        passwordHash,
+        emailVerified: true,
+        status: "ACTIVE",
+        role: "CUSTOMER",
+        phoneCountryCode: "+91",
+        phoneNumber: "9876500000",
+      },
     });
     return existing.id;
   }
@@ -94,6 +101,8 @@ async function ensureUser(prisma: PrismaClient, email: string) {
       emailVerified: true,
       status: "ACTIVE",
       role: "CUSTOMER",
+      phoneCountryCode: "+91",
+      phoneNumber: "9876500000",
     },
   });
   return created.id;
