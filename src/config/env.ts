@@ -116,6 +116,44 @@ const envSchema = z
     OPERATIONAL_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 
     OPERATIONAL_POLL_BATCH_SIZE: z.coerce.number().int().positive().default(50),
+
+    /** Active payment gateway: stub (default) or cashfree */
+    PAYMENT_GATEWAY: z
+      .preprocess(
+        (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
+        z.enum(["stub", "cashfree"]).default("stub"),
+      )
+      .optional()
+      .default("stub"),
+
+    CASHFREE_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    CASHFREE_ENVIRONMENT: z
+      .preprocess(
+        (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
+        z.enum(["sandbox", "production"]).default("sandbox"),
+      )
+      .optional()
+      .default("sandbox"),
+
+    CASHFREE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    CASHFREE_CLIENT_SECRET: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+    CASHFREE_API_VERSION: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).default("2025-01-01"),
+    ),
+    CASHFREE_RETURN_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    CASHFREE_NOTIFY_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    CASHFREE_WEBHOOK_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "test" && !data.JWT_ACCESS_SECRET) {
@@ -248,4 +286,41 @@ export function isMsg91Configured(): boolean {
 
 export function isMsg91AccountTemplateConfigured(): boolean {
   return Boolean(getMsg91AccountTemplateId());
+}
+
+export function getCashfreePgBaseUrl(): string {
+  if (env.CASHFREE_ENVIRONMENT === "production") {
+    return "https://api.cashfree.com/pg";
+  }
+  return "https://sandbox.cashfree.com/pg";
+}
+
+export function isCashfreeConfigured(): boolean {
+  return Boolean(
+    env.CASHFREE_ENABLED &&
+    env.CASHFREE_CLIENT_ID &&
+    env.CASHFREE_CLIENT_SECRET &&
+    env.CASHFREE_ENVIRONMENT === "sandbox",
+  );
+}
+
+export function requireCashfreeCredentials(): {
+  clientId: string;
+  clientSecret: string;
+  apiVersion: string;
+} {
+  if (!env.CASHFREE_ENABLED) {
+    throw new Error("CASHFREE_ENABLED is false");
+  }
+  if (env.CASHFREE_ENVIRONMENT !== "sandbox") {
+    throw new Error("Cashfree production is not enabled in Phase 2A");
+  }
+  if (!env.CASHFREE_CLIENT_ID || !env.CASHFREE_CLIENT_SECRET) {
+    throw new Error("Cashfree client credentials are not configured");
+  }
+  return {
+    clientId: env.CASHFREE_CLIENT_ID,
+    clientSecret: env.CASHFREE_CLIENT_SECRET,
+    apiVersion: env.CASHFREE_API_VERSION,
+  };
 }

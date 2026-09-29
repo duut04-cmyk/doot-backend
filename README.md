@@ -363,7 +363,7 @@ GET /api/v1/admin/deliveries/:deliveryId/history
 - Rating/feedback allowed only when `Delivery.status = DELIVERED`
 - Historical detail composes existing domain records (no duplicate delivery table)
 - OTP metadata exposed without plaintext/hash; provider credentials never returned
-- **Not implemented in Phase 8:** payment, wallet, billing, refunds
+- **Payment (Phase 1):** provider-neutral domain — see [docs/payment-domain-phase-1.md](./docs/payment-domain-phase-1.md). Cashfree gateway integration is **next phase**. No customer wallet.
 
 Environment:
 

@@ -22,7 +22,11 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "db:reset-data": "tsx scripts/reset-database-data.ts",
-    "sync:mock-provider": "tsx scripts/sync-mock-provider-capabilities.ts"
+    "sync:mock-provider": "tsx scripts/sync-mock-provider-capabilities.ts",
+    "cert:mock-lifecycle": "tsx scripts/mock-customer-lifecycle-certification.ts",
+    "cert:payment-phase1": "tsx scripts/payment-domain-phase1-verification.ts",
+    "cert:cashfree-sandbox": "tsx scripts/cashfree-sandbox-certification.ts",
+    "cert:browser-gate": "tsx --tsconfig ../customer-platform/tsconfig.json scripts/customer-browser-gate-verification.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
