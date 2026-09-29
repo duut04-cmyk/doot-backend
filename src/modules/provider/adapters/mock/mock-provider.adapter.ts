@@ -1,6 +1,9 @@
 import type { NormalizedDriver } from "../../contracts/common.js";
 import type { AvailabilityRequest } from "../../contracts/availability.js";
-import type { BookingRequest, NormalizedBookingResult } from "../../contracts/booking.js";
+import type {
+  BookingRequest,
+  NormalizedBookingResult,
+} from "../../contracts/booking.js";
 import type {
   CancellationRequest,
   NormalizedCancellationResult,
@@ -35,6 +38,7 @@ import type {
 import {
   MOCK_ADAPTER_VERSION,
   MOCK_BOOKING_ID,
+  isMockProviderBookingId,
   MOCK_CANCELLATION_ID,
   MOCK_CAPABILITIES,
   MOCK_PROVIDER_CODE,
@@ -86,10 +90,7 @@ export class MockProviderAdapter implements ProviderAdapter {
         ) as AdapterOperationOutput<T>;
         break;
       case "getQuote":
-        result = this.getQuote(
-          input as QuoteRequest,
-          ctx,
-        ) as AdapterOperationOutput<T>;
+        result = this.getQuote(input as QuoteRequest, ctx) as AdapterOperationOutput<T>;
         break;
       case "createBooking":
         result = this.createBooking(
@@ -202,10 +203,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     };
   }
 
-  private getAvailability(
-    _request: AvailabilityRequest,
-    ctx: AdapterExecutionContext,
-  ) {
+  private getAvailability(_request: AvailabilityRequest, ctx: AdapterExecutionContext) {
     const known = ctx.testHints?.mockAvailabilityKnown ?? true;
     const available = ctx.testHints?.mockAvailabilityAvailable ?? true;
     const availableDriverCount =
@@ -229,9 +227,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     ctx: AdapterExecutionContext,
   ): NormalizedQuote {
     const amount =
-      ctx.testHints?.mockRequoteAmount ??
-      ctx.testHints?.mockQuoteAmount ??
-      150;
+      ctx.testHints?.mockRequoteAmount ?? ctx.testHints?.mockQuoteAmount ?? 150;
     const etaMinutes = ctx.testHints?.mockEtaMinutes ?? 45;
     const available = ctx.testHints?.mockQuoteAvailable ?? true;
     return {
@@ -277,10 +273,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       });
     }
 
-    if (
-      ctx.testHints?.mockBookingReject ||
-      request.package.weightKg > 1000
-    ) {
+    if (ctx.testHints?.mockBookingReject || request.package.weightKg > 1000) {
       throw new ProviderAdapterError({
         providerCode: MOCK_PROVIDER_CODE,
         operation: "createBooking",
@@ -328,11 +321,13 @@ export class MockProviderAdapter implements ProviderAdapter {
     const bookedAmount =
       ctx.testHints?.mockBookingAmount ?? ctx.testHints?.mockQuoteAmount ?? 150;
 
+    const providerBookingId =
+      ctx.testHints?.mockBookingProviderOrderId ?? `MOCK-${request.deliveryReference}`;
+
     return {
       success: true,
       outcome: "BOOKED",
-      providerBookingId:
-        ctx.testHints?.mockBookingProviderOrderId ?? MOCK_BOOKING_ID,
+      providerBookingId,
       providerReference:
         ctx.testHints?.mockBookingProviderReference ??
         request.idempotencyKey ??
@@ -342,7 +337,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       bookedAt: new Date().toISOString(),
       estimatedPickupAt: null,
       estimatedDeliveryAt: null,
-      trackingUrl: "https://mock-provider.test/track/MOCK-BOOKING-1001",
+      trackingUrl: `https://mock-provider.test/track/${providerBookingId}`,
       driver: null,
       service: {
         serviceCode: request.serviceCode ?? "MOCK_BIKE",
@@ -354,10 +349,8 @@ export class MockProviderAdapter implements ProviderAdapter {
     };
   }
 
-  private getBooking(input: {
-    providerBookingId: string;
-  }): NormalizedBookingResult {
-    if (input.providerBookingId !== MOCK_BOOKING_ID) {
+  private getBooking(input: { providerBookingId: string }): NormalizedBookingResult {
+    if (!isMockProviderBookingId(input.providerBookingId)) {
       throw new ProviderAdapterError({
         providerCode: MOCK_PROVIDER_CODE,
         operation: "getBooking",
@@ -389,7 +382,10 @@ export class MockProviderAdapter implements ProviderAdapter {
         schedule: { mode: "ASAP", timezone: "Asia/Kolkata" },
         requirements: [],
       },
-      { requestId: "mock-get-booking", config: { providerCode: MOCK_PROVIDER_CODE } as never },
+      {
+        requestId: "mock-get-booking",
+        config: { providerCode: MOCK_PROVIDER_CODE } as never,
+      },
     );
   }
 
@@ -428,7 +424,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     request: CancellationRequest,
     ctx: AdapterExecutionContext,
   ): NormalizedCancellationResult {
-    if (request.providerBookingId !== MOCK_BOOKING_ID) {
+    if (!isMockProviderBookingId(request.providerBookingId)) {
       return {
         success: false,
         providerCancellationId: null,
@@ -513,8 +509,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       providerEventId:
         typeof body.eventId === "string" ? body.eventId : "MOCK-WEBHOOK-1",
       eventType: typeof body.eventType === "string" ? body.eventType : "STATUS_UPDATE",
-      providerReference:
-        typeof body.reference === "string" ? body.reference : null,
+      providerReference: typeof body.reference === "string" ? body.reference : null,
       providerBookingId:
         typeof body.bookingId === "string" ? body.bookingId : MOCK_BOOKING_ID,
       status: typeof body.status === "string" ? body.status : "IN_TRANSIT",

@@ -12,10 +12,9 @@ import type { RatingController } from "../rating/rating.controller.js";
 import { createRatingRouter } from "../rating/rating.routes.js";
 import type { OrchestrationController } from "../orchestration/orchestration.controller.js";
 import { createOrchestrationRouter } from "../orchestration/orchestration.routes.js";
-import {
-  deliveryController,
-  type DeliveryController,
-} from "./delivery.controller.js";
+import type { PaymentController } from "../payment/payment.controller.js";
+import { createPaymentRouter } from "../payment/payment.routes.js";
+import { deliveryController, type DeliveryController } from "./delivery.controller.js";
 import {
   createDeliverySchema,
   deliveryIdParamsSchema,
@@ -33,6 +32,7 @@ export function createDeliveryRouter(
   orchestrationController?: OrchestrationController,
   bookingController?: BookingController,
   options?: {
+    paymentController?: PaymentController;
     ratingController?: RatingController;
     feedbackController?: FeedbackController;
     authenticateMiddleware?: AuthenticateMiddleware;
@@ -43,6 +43,7 @@ export function createDeliveryRouter(
 
   router.use(createOrchestrationRouter(orchestrationController));
   router.use(createBookingRouter(bookingController));
+  router.use(createPaymentRouter(options?.paymentController));
   router.use(createOperationalRouter());
   router.use(createRatingRouter(options?.ratingController, auth));
   router.use(createFeedbackRouter(options?.feedbackController, auth));

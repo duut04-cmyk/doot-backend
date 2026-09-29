@@ -137,7 +137,10 @@ export class OtpService {
         deliveryId: input.deliveryId,
         type: "PICKUP" as const,
         expiresAt: expiresAt.toISOString(),
-        ...(process.env.NODE_ENV === "test" ? { _testOtp: code } : {}),
+        ...(process.env.NODE_ENV === "test" ||
+        process.env.EXPOSE_OTP_FOR_CERTIFICATION === "true"
+          ? { _testOtp: code }
+          : {}),
       },
     };
   }
@@ -266,7 +269,10 @@ export class OtpService {
         deliveryId: input.deliveryId,
         type: "DELIVERY" as const,
         expiresAt: expiresAt.toISOString(),
-        ...(process.env.NODE_ENV === "test" ? { _testOtp: code } : {}),
+        ...(process.env.NODE_ENV === "test" ||
+        process.env.EXPOSE_OTP_FOR_CERTIFICATION === "true"
+          ? { _testOtp: code }
+          : {}),
       },
     };
   }

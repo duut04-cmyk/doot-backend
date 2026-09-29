@@ -15,6 +15,7 @@ import type { SettingsController } from "../modules/settings/settings.controller
 import { createProviderAdminRouter } from "../modules/provider/provider.routes.js";
 import type { ProviderController } from "../modules/provider/provider.controller.js";
 import { createTestSmsRouter } from "../modules/test-sms/test-sms.routes.js";
+import { createPaymentWebhookRouter } from "../modules/payment/webhook/payment-webhook.routes.js";
 
 export function createApiV1Router(options?: {
   authController?: AuthController;
@@ -37,6 +38,7 @@ export function createApiV1Router(options?: {
 
   router.use("/auth", createAuthRouter(options?.authController));
   router.use("/deliveries", createDeliveryRouter(options?.deliveryController));
+  router.use("/payments/webhooks", createPaymentWebhookRouter());
 
   router.use(
     "/admin/customers",
