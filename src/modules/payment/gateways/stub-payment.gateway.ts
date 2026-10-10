@@ -44,18 +44,19 @@ export class StubPaymentGateway implements PaymentGateway {
 
   async createRefund(input: GatewayRefundInput): Promise<GatewayRefundResult> {
     return {
-      gatewayRefundId: `stub_refund_${randomUUID()}`,
-      gatewayRefundReference: input.idempotencyKey,
-      status: "PENDING",
+      gatewayRefundId: input.merchantRefundId,
+      gatewayRefundReference: `stub_cf_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+      status: "SUCCESS",
     };
   }
 
   async getRefundStatus(input: {
+    gatewayOrderId: string;
     gatewayRefundId: string;
   }): Promise<GatewayRefundResult> {
     return {
       gatewayRefundId: input.gatewayRefundId,
-      status: "PENDING",
+      status: "SUCCESS",
     };
   }
 }

@@ -12,7 +12,10 @@ import type { ProviderBookingDto } from "../booking/booking.types.js";
 import type { DeliveryWithRelations } from "./delivery.repository.js";
 import { toPhoneResponse } from "../../core/phone/phone.js";
 import { decimalToNumber } from "./delivery.types.js";
-import type { DeliveryHistoryDetail, OtpHistoryMetadata } from "./delivery-history.types.js";
+import type {
+  DeliveryHistoryDetail,
+  OtpHistoryMetadata,
+} from "./delivery-history.types.js";
 import type { DeliveryStatusEvent } from "@prisma/client";
 
 function mapOtpMetadata(otp: DeliveryOtpDto | null): OtpHistoryMetadata | null {
@@ -54,9 +57,7 @@ function mapBooking(booking: ProviderBookingDto | null) {
     providerOrderId: booking.providerOrderId,
     quote: {
       amount:
-        booking.bookedAmount ??
-        booking.quotedAmount ??
-        booking.quoteSnapshot.amount,
+        booking.bookedAmount ?? booking.quotedAmount ?? booking.quoteSnapshot.amount,
       currency:
         booking.bookedCurrency ??
         booking.quotedCurrency ??
@@ -167,9 +168,7 @@ export function toDeliveryHistoryDetail(input: {
       )!,
       instructions: detail.pickup.instructions,
       latitude:
-        detail.pickup.latitude == null
-          ? null
-          : decimalToNumber(detail.pickup.latitude),
+        detail.pickup.latitude == null ? null : decimalToNumber(detail.pickup.latitude),
       longitude:
         detail.pickup.longitude == null
           ? null
@@ -184,13 +183,9 @@ export function toDeliveryHistoryDetail(input: {
       )!,
       instructions: detail.drop.instructions,
       latitude:
-        detail.drop.latitude == null
-          ? null
-          : decimalToNumber(detail.drop.latitude),
+        detail.drop.latitude == null ? null : decimalToNumber(detail.drop.latitude),
       longitude:
-        detail.drop.longitude == null
-          ? null
-          : decimalToNumber(detail.drop.longitude),
+        detail.drop.longitude == null ? null : decimalToNumber(detail.drop.longitude),
     },
     package: {
       packageType: detail.package.packageType,
@@ -202,9 +197,7 @@ export function toDeliveryHistoryDetail(input: {
           ? null
           : decimalToNumber(detail.package.lengthCm),
       widthCm:
-        detail.package.widthCm == null
-          ? null
-          : decimalToNumber(detail.package.widthCm),
+        detail.package.widthCm == null ? null : decimalToNumber(detail.package.widthCm),
       heightCm:
         detail.package.heightCm == null
           ? null
@@ -233,11 +226,7 @@ export function toDeliveryHistoryDetail(input: {
       reason: event.reason,
       createdAt: event.createdAt.toISOString(),
     })),
-    orchestration: mapOrchestration(
-      detail.id,
-      detail.status,
-      input.orchestration,
-    ),
+    orchestration: mapOrchestration(detail.id, detail.status, input.orchestration),
     booking: mapBooking(input.booking),
     driver: driverResponse as Record<string, unknown>,
     tracking: mapTracking(input.latestTracking, input.trackingHistory),
@@ -249,7 +238,11 @@ export function toDeliveryHistoryDetail(input: {
     rating: input.rating
       ? {
           driverRating: input.rating.driverRating,
+          platformRating: input.rating.platformRating,
           deliveryRating: input.rating.deliveryRating,
+          timelinessRating: input.rating.timelinessRating,
+          packageHandlingRating: input.rating.packageHandlingRating,
+          servicePresentationRating: input.rating.servicePresentationRating,
           submittedAt: input.rating.createdAt.toISOString(),
         }
       : null,

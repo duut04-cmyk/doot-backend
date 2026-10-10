@@ -7,7 +7,11 @@ import { DeliveryService } from "../src/modules/delivery/delivery.service.js";
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
-import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
+import {
+  seedOptionReadyDelivery,
+  seedPaidPayment,
+} from "./helpers/booking-test-helpers.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
@@ -31,6 +35,7 @@ describe("BookingService", () => {
   let providerRepo: InMemoryProviderRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let bookingRepo: InMemoryBookingRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let executeMock: ReturnType<typeof vi.fn>;
   let customerId: string;
 
@@ -40,6 +45,7 @@ describe("BookingService", () => {
     providerRepo = new InMemoryProviderRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     bookingRepo = new InMemoryBookingRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     executeMock = vi.fn();
     customerId = randomUUID();
   });
@@ -58,6 +64,7 @@ describe("BookingService", () => {
       orchestrationRepo,
       bookingRepo,
       executor,
+      paymentRepo,
     );
   }
 
@@ -84,6 +91,7 @@ describe("BookingService", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     const result = await buildService().confirm({
       deliveryId: seeded.deliveryId,
@@ -104,6 +112,41 @@ describe("BookingService", () => {
     expect(delivery?.status).toBe("BOOKED");
     expect(bookingRepo.bookings).toHaveLength(1);
     expect(bookingRepo.bookings[0]?.providerOrderId).toBe("PO-100");
+  });
+
+  it("rejects confirmation when payment is missing or not PAID", async () => {
+    configureExecuteMock(executeMock, async () => ({
+      success: true,
+      outcome: "BOOKED",
+      providerBookingId: "PO-UNPAID",
+      providerReference: "REF-UNPAID",
+      status: "CONFIRMED",
+      bookedAt: new Date().toISOString(),
+      estimatedPickupAt: null,
+      estimatedDeliveryAt: null,
+      trackingUrl: null,
+      driver: null,
+      service: null,
+      reason: null,
+      amount: { amount: 150, currency: "INR" },
+    }));
+
+    const seeded = await seedOptionReadyDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      customerId,
+    });
+
+    await expect(
+      buildService().confirm({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-unpaid",
+        requestHash: hashConfirmRequest(),
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.PAYMENT_REQUIRED });
   });
 
   it("rejects confirmation when delivery is CREATED", async () => {
@@ -206,9 +249,8 @@ describe("BookingService", () => {
 
   it("marks booking UNKNOWN and keeps delivery BOOKING on provider timeout", async () => {
     configureExecuteMock(executeMock, async () => {
-      const { ProviderAdapterError } = await import(
-        "../src/modules/provider/contracts/provider-error.js"
-      );
+      const { ProviderAdapterError } =
+        await import("../src/modules/provider/contracts/provider-error.js");
       throw new ProviderAdapterError({
         providerCode: "MOCK",
         operation: "createBooking",
@@ -223,6 +265,7 @@ describe("BookingService", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({
@@ -321,6 +364,7 @@ describe("BookingService", () => {
         quotedAt: new Date(Date.now() - 600_000).toISOString(),
       },
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({
@@ -356,6 +400,7 @@ describe("BookingService", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
     const service = buildService();
     const key = randomUUID();
 
@@ -397,6 +442,7 @@ describe("BookingService", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({
@@ -416,6 +462,7 @@ describe("BookingService", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({

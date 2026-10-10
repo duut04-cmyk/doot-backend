@@ -75,7 +75,8 @@ const packageSchema = {
       type: "string",
       enum: ["SMALL", "MEDIUM", "LARGE"],
       nullable: true,
-      description: "Optional; validated against weight. Server derives authoritative tier.",
+      description:
+        "Optional; validated against weight. Server derives authoritative tier.",
     },
     quantity: { type: "integer", minimum: 1, maximum: 1, default: 1 },
     photos: {
@@ -102,7 +103,7 @@ const deliveryDetailSchema = {
   type: "object",
   properties: {
     id: { type: "string", format: "uuid" },
-    reference: { type: "string", example: "DOTT-1000" },
+    reference: { type: "string", example: "DOOT-1000" },
     status: { type: "string", example: "CREATED" },
     pickup: locationResponseSchema,
     drop: locationResponseSchema,

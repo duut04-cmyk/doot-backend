@@ -7,9 +7,7 @@ import type {
   OrchestrationRequestDto,
 } from "./orchestration.types.js";
 
-function mapCancellationPolicy(
-  snapshot: unknown,
-): CancellationPolicy | null {
+function mapCancellationPolicy(snapshot: unknown): CancellationPolicy | null {
   if (!snapshot || typeof snapshot !== "object") {
     return null;
   }
@@ -31,6 +29,9 @@ function mapSelectedOption(
   const quote = option.quoteSnapshot as {
     amount?: number;
     currency?: string;
+    customerPayableAmount?: number;
+    platformFeeAmount?: number;
+    gstAmount?: number;
   };
   const availability = option.availabilitySnapshot as {
     known?: boolean;
@@ -39,16 +40,17 @@ function mapSelectedOption(
     reason?: string | null;
   } | null;
   const eta = option.etaSnapshot as { estimatedDeliveryAt?: string | null } | null;
-  const cancellationPolicy =
-    mapCancellationPolicy(option.cancellationPolicySnapshot) ?? {
-      supported: false,
-      allowedBeforePickup: false,
-      allowedAfterPickup: false,
-      fee: { type: "UNKNOWN" as const },
-      conditions: [],
-      policyKnown: false,
-      source: "UNKNOWN" as const,
-    };
+  const cancellationPolicy = mapCancellationPolicy(
+    option.cancellationPolicySnapshot,
+  ) ?? {
+    supported: false,
+    allowedBeforePickup: false,
+    allowedAfterPickup: false,
+    fee: { type: "UNKNOWN" as const },
+    conditions: [],
+    policyKnown: false,
+    source: "UNKNOWN" as const,
+  };
 
   return {
     providerCode: option.providerCode,
@@ -56,6 +58,13 @@ function mapSelectedOption(
     quote: {
       amount: quote.amount ?? 0,
       currency: quote.currency ?? "INR",
+      ...(quote.customerPayableAmount != null
+        ? {
+            customerPayableAmount: quote.customerPayableAmount,
+            platformFeeAmount: quote.platformFeeAmount,
+            gstAmount: quote.gstAmount,
+          }
+        : {}),
     },
     estimatedDeliveryAt: eta?.estimatedDeliveryAt ?? null,
     availability: availability
@@ -106,11 +115,7 @@ export function toAdminOrchestrationResult(
   deliveryStatus: string,
   request: OrchestrationRequestDto,
 ): AdminOrchestrationResultDto {
-  const customer = toCustomerOrchestrationResult(
-    deliveryId,
-    deliveryStatus,
-    request,
-  );
+  const customer = toCustomerOrchestrationResult(deliveryId, deliveryStatus, request);
   return {
     ...customer,
     orchestration: {

@@ -130,7 +130,7 @@ describe("OrchestrationService", () => {
     return created.data.id;
   }
 
-  function buildService() {
+  function buildService(orchestrationMaxDurationMs?: number) {
     const evaluationService = {
       evaluateProvider: evaluateMock,
     } as unknown as OrchestrationProviderEvaluationService;
@@ -139,6 +139,7 @@ describe("OrchestrationService", () => {
       providerRepo,
       orchestrationRepo,
       evaluationService,
+      orchestrationMaxDurationMs,
     );
   }
 
@@ -402,12 +403,52 @@ describe("OrchestrationService", () => {
       requestId: "req-unknown-policy",
     });
 
-    expect(result.data.orchestration.selectedOption?.providerCode).toBe(
-      "MOCK_KNOWN",
-    );
+    expect(result.data.orchestration.selectedOption?.providerCode).toBe("MOCK_KNOWN");
     expect(
       result.data.orchestration.selectedOption?.cancellationPolicy.policyKnown,
     ).toBe(true);
+  });
+
+  it("marks slow provider evaluations as PROVIDER_TIMEOUT within orchestration budget", async () => {
+    const fastId = await seedOrchestrationMockProvider(providerRepo, {
+      code: "MOCK_FAST",
+      priority: 1,
+    });
+    await seedOrchestrationMockProvider(providerRepo, {
+      code: "MOCK_SLOW",
+      priority: 2,
+    });
+
+    evaluateMock.mockImplementation(async ({ provider }) => {
+      if (provider.code === "MOCK_SLOW") {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return eligibleOutcome({
+          providerId: provider.id,
+          providerCode: "MOCK_SLOW",
+          amount: 100,
+        });
+      }
+      return eligibleOutcome({
+        providerId: fastId,
+        providerCode: "MOCK_FAST",
+        amount: 150,
+      });
+    });
+
+    const deliveryId = await createDelivery();
+    const result = await buildService(50).orchestrate({
+      deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-orchestration-budget",
+    });
+
+    expect(result.data.orchestration.selectedOption?.providerCode).toBe("MOCK_FAST");
+    const slowEval = orchestrationRepo.evaluations.find(
+      (item) => item.providerCode === "MOCK_SLOW",
+    );
+    expect(slowEval?.status).toBe("ERROR");
+    expect(slowEval?.errorCategory).toBe("PROVIDER_TIMEOUT");
   });
 
   it("rejects orchestration for BOOKED deliveries", async () => {

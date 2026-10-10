@@ -2,7 +2,7 @@ import { env, requireCashfreeCredentials } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../core/errors/app-error.js";
 import { ErrorCodes } from "../../../core/errors/error-codes.js";
-import { normalizeCashfreePaymentWebhook } from "../gateways/cashfree/cashfree-webhook.normalize.js";
+import { resolveCashfreePaymentWebhook } from "../gateways/cashfree/cashfree-webhook.normalize.js";
 import { verifyCashfreeWebhookSignature } from "../gateways/cashfree/cashfree-webhook.verify.js";
 import { paymentRepository, type IPaymentRepository } from "../payment.repository.js";
 import { toMoneyDecimal } from "../payment.money.js";
@@ -55,16 +55,42 @@ export class CashfreePaymentWebhookService {
       });
     }
 
-    const event = normalizeCashfreePaymentWebhook({
+    const resolved = resolveCashfreePaymentWebhook({
       payload,
       headerIdempotencyKey: input.headerIdempotencyKey,
     });
-    if (!event) {
+
+    if (resolved.action === "ignore") {
+      logger.info(
+        {
+          requestId: input.requestId,
+          reason: resolved.reason,
+          ...resolved.diagnostics,
+        },
+        "cashfree_webhook_ignored",
+      );
+      return {
+        processingStatus: "IGNORED" as const,
+        reason: resolved.reason,
+      };
+    }
+
+    if (resolved.action === "reject") {
+      logger.warn(
+        {
+          requestId: input.requestId,
+          reason: resolved.reason,
+          ...resolved.diagnostics,
+        },
+        "cashfree_webhook_rejected",
+      );
       throw new AppError("Unsupported Cashfree webhook event.", {
         statusCode: 422,
         code: ErrorCodes.CASHFREE_WEBHOOK_MALFORMED,
       });
     }
+
+    const event = resolved.event;
 
     const payment = await this.payments.findByGatewayOrderId(event.gatewayOrderId);
     if (!payment) {
@@ -81,7 +107,10 @@ export class CashfreePaymentWebhookService {
       });
     }
 
-    if (event.amount !== undefined) {
+    const isRefundEvent =
+      event.eventType === "REFUND_SUCCESS" || event.eventType === "REFUND_FAILED";
+
+    if (!isRefundEvent && event.amount !== undefined) {
       const expected = toMoneyDecimal(payment.amount);
       const received = toMoneyDecimal(event.amount);
       if (!expected.equals(received)) {
@@ -107,6 +136,7 @@ export class CashfreePaymentWebhookService {
         gateway: payment.gateway,
         gatewayOrderId: event.gatewayOrderId,
         eventType: event.eventType,
+        cashfreeWebhookType: event.metadata?.cashfreeWebhookType,
       },
       "cashfree_webhook_received",
     );

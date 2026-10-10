@@ -1,4 +1,5 @@
 import type { PaymentGatewayCode } from "@prisma/client";
+import { DELIVERY_REFERENCE_PREFIX } from "../../delivery/delivery.constants.js";
 import { logger } from "../../../config/logger.js";
 import { AppError } from "../../../core/errors/app-error.js";
 import { ErrorCodes } from "../../../core/errors/error-codes.js";
@@ -11,6 +12,7 @@ import {
   buildSafeCashfreeClientMessage,
   extractCashfreeApiError,
 } from "./cashfree/cashfree-api-errors.js";
+import { formatCashfreeCustomerPhone } from "../gateway-customer-phone.js";
 import type { PaymentGateway } from "./payment-gateway.interface.js";
 import type {
   GatewayCreateOrderInput,
@@ -18,6 +20,7 @@ import type {
   GatewayPaymentStatusResult,
   GatewayRefundInput,
   GatewayRefundResult,
+  GatewayRefundStatusInput,
 } from "./payment-gateway.types.js";
 
 type FetchFn = typeof fetch;
@@ -41,7 +44,7 @@ type CashfreePaymentsResponse =
   CashfreePaymentRow[] | { payments?: CashfreePaymentRow[] };
 
 function buildCashfreeOrderId(paymentId: string): string {
-  return `DOTT-${paymentId}`;
+  return `${DELIVERY_REFERENCE_PREFIX}-${paymentId}`;
 }
 
 function mapCashfreeStatusToGateway(
@@ -55,14 +58,6 @@ function mapCashfreeStatusToGateway(
   }
   if (upper === "EXPIRED") return "EXPIRED";
   return "PENDING";
-}
-
-function formatCustomerPhone(
-  customer: GatewayCreateOrderInput["customer"],
-): string | undefined {
-  if (!customer?.phone) return undefined;
-  const digits = customer.phone.replace(/\D/g, "");
-  return digits.length >= 10 ? digits : undefined;
 }
 
 export class CashfreePaymentGateway implements PaymentGateway {
@@ -99,7 +94,7 @@ export class CashfreePaymentGateway implements PaymentGateway {
 
     const orderId =
       input.existingGatewayOrderId ?? buildCashfreeOrderId(input.paymentId);
-    const customerPhone = formatCustomerPhone(input.customer);
+    const customerPhone = formatCashfreeCustomerPhone(input.customer?.phone);
     const body: Record<string, unknown> = {
       order_id: orderId,
       order_amount: input.amount,
@@ -113,7 +108,9 @@ export class CashfreePaymentGateway implements PaymentGateway {
 
     const orderMeta: Record<string, string> = {};
     if (env.CASHFREE_RETURN_URL) {
-      orderMeta.return_url = env.CASHFREE_RETURN_URL;
+      const returnUrl = new URL(env.CASHFREE_RETURN_URL);
+      returnUrl.searchParams.set("deliveryId", input.deliveryId);
+      orderMeta.return_url = returnUrl.toString();
     }
     if (env.CASHFREE_NOTIFY_URL) {
       orderMeta.notify_url = env.CASHFREE_NOTIFY_URL;
@@ -206,6 +203,25 @@ export class CashfreePaymentGateway implements PaymentGateway {
       });
     }
 
+    let apiHost: string | undefined;
+    try {
+      apiHost = new URL(requestUrl).hostname;
+    } catch {
+      apiHost = undefined;
+    }
+    logger.info(
+      {
+        gateway: "CASHFREE",
+        operation: "create_order",
+        httpStatus: response.status,
+        apiHost,
+        orderId: gatewayOrderId,
+        paymentSessionPresent: true,
+        paymentSessionLength: paymentSessionId.length,
+      },
+      "cashfree_create_order_success",
+    );
+
     return {
       gatewayOrderId,
       paymentSessionId,
@@ -270,21 +286,153 @@ export class CashfreePaymentGateway implements PaymentGateway {
     return this.getPaymentStatus(input);
   }
 
-  async createRefund(_input: GatewayRefundInput): Promise<GatewayRefundResult> {
-    throw new AppError("Cashfree refunds are not implemented in Phase 2A.", {
-      statusCode: 501,
-      code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+  async createRefund(input: GatewayRefundInput): Promise<GatewayRefundResult> {
+    try {
+      requireCashfreeCredentials();
+    } catch {
+      throw new AppError("Cashfree payment gateway is not configured.", {
+        statusCode: 503,
+        code: ErrorCodes.PAYMENT_GATEWAY_NOT_CONFIGURED,
+      });
+    }
+
+    const body: Record<string, unknown> = {
+      refund_amount: input.amount,
+      refund_id: input.merchantRefundId,
+      refund_speed: "STANDARD",
+    };
+    if (input.refundNote?.trim()) {
+      body.refund_note = input.refundNote.trim().slice(0, 100);
+    }
+
+    const requestUrl = this.pgUrl(
+      `/orders/${encodeURIComponent(input.gatewayOrderId)}/refunds`,
+    );
+    const response = await this.fetchImpl(requestUrl, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
     });
+
+    const text = await response.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      logger.error(
+        {
+          gateway: "CASHFREE",
+          operation: "create_refund",
+          httpStatus: response.status,
+          orderId: input.gatewayOrderId,
+          refundId: input.merchantRefundId,
+          responseBodyPreview: text.slice(0, 500),
+        },
+        "cashfree_create_refund_invalid_json",
+      );
+      throw new AppError("Cashfree refund creation returned invalid JSON.", {
+        statusCode: 502,
+        code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+      });
+    }
+
+    const cashfreeError = extractCashfreeApiError(parsed);
+    if (!response.ok) {
+      logger.error(
+        {
+          gateway: "CASHFREE",
+          operation: "create_refund",
+          httpStatus: response.status,
+          orderId: input.gatewayOrderId,
+          refundId: input.merchantRefundId,
+          cashfreeCode: cashfreeError.code,
+          cashfreeMessage: cashfreeError.message,
+        },
+        "cashfree_create_refund_failed",
+      );
+      throw new AppError(buildSafeCashfreeClientMessage(cashfreeError), {
+        statusCode: 502,
+        code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+      });
+    }
+
+    return mapCashfreeRefundEntity(parsed, input.merchantRefundId);
   }
 
-  async getRefundStatus(_input: {
-    gatewayRefundId: string;
-  }): Promise<GatewayRefundResult> {
-    throw new AppError("Cashfree refunds are not implemented in Phase 2A.", {
-      statusCode: 501,
-      code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+  async getRefundStatus(input: GatewayRefundStatusInput): Promise<GatewayRefundResult> {
+    try {
+      requireCashfreeCredentials();
+    } catch {
+      throw new AppError("Cashfree payment gateway is not configured.", {
+        statusCode: 503,
+        code: ErrorCodes.PAYMENT_GATEWAY_NOT_CONFIGURED,
+      });
+    }
+
+    const requestUrl = this.pgUrl(
+      `/orders/${encodeURIComponent(input.gatewayOrderId)}/refunds/${encodeURIComponent(input.gatewayRefundId)}`,
+    );
+    const response = await this.fetchImpl(requestUrl, {
+      method: "GET",
+      headers: this.headers(),
     });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new AppError("Cashfree refund status query failed.", {
+        statusCode: 502,
+        code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+      });
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      throw new AppError("Cashfree refund status returned invalid JSON.", {
+        statusCode: 502,
+        code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+      });
+    }
+
+    return mapCashfreeRefundEntity(parsed, input.gatewayRefundId);
   }
+}
+
+type CashfreeRefundEntity = {
+  refund_id?: string;
+  cf_refund_id?: string;
+  refund_status?: string;
+  refund_amount?: number;
+};
+
+function mapCashfreeRefundStatus(
+  raw: string | undefined,
+): GatewayRefundResult["status"] {
+  if (!raw) return "PENDING";
+  const upper = raw.trim().toUpperCase();
+  if (upper === "SUCCESS") return "SUCCESS";
+  if (
+    upper === "FAILED" ||
+    upper === "CANCELLED" ||
+    upper === "REJECTED" ||
+    upper === "USER_DROPPED"
+  ) {
+    return "FAILED";
+  }
+  return "PENDING";
+}
+
+function mapCashfreeRefundEntity(
+  parsed: unknown,
+  fallbackMerchantRefundId: string,
+): GatewayRefundResult {
+  const entity = (parsed ?? {}) as CashfreeRefundEntity;
+  return {
+    gatewayRefundId: entity.refund_id ?? fallbackMerchantRefundId,
+    gatewayRefundReference: entity.cf_refund_id ?? null,
+    status: mapCashfreeRefundStatus(entity.refund_status),
+  };
 }
 
 export const cashfreePaymentGateway = new CashfreePaymentGateway();

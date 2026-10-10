@@ -1,9 +1,7 @@
 import type { UserRole } from "@prisma/client";
 import { loadAuthorizedDelivery } from "./delivery-access.js";
-import {
-  deliveryRepository,
-  type IDeliveryRepository,
-} from "./delivery.repository.js";
+import { deliveryRepository, type IDeliveryRepository } from "./delivery.repository.js";
+import { enrichHistoryDetailPhotoUrls } from "./delivery-photo-urls.js";
 import { toDeliveryHistoryDetail } from "./delivery-history.mapper.js";
 import type { GetDeliveryHistoryResult } from "./delivery-history.types.js";
 import {
@@ -80,11 +78,7 @@ export class DeliveryHistoryService {
       this.bookingRepo.findLatestByDeliveryId(input.deliveryId),
       this.driverRepo.findLatestByDeliveryId(input.deliveryId),
       this.trackingRepo.findLatestByDeliveryId(input.deliveryId),
-      this.trackingRepo.listByDeliveryId(
-        input.deliveryId,
-        1,
-        TRACKING_HISTORY_LIMIT,
-      ),
+      this.trackingRepo.listByDeliveryId(input.deliveryId, 1, TRACKING_HISTORY_LIMIT),
       this.cancellationRepo.findLatestByDeliveryId(input.deliveryId),
       this.otpRepo.listByDeliveryId(input.deliveryId),
       this.ratingRepo.findByDeliveryId(input.deliveryId),
@@ -100,23 +94,25 @@ export class DeliveryHistoryService {
       otps.find((otp) => otp.type === "DELIVERY") ??
       null;
 
+    const historyDetail = toDeliveryHistoryDetail({
+      delivery,
+      role: input.role,
+      timeline,
+      orchestration,
+      booking,
+      driver,
+      latestTracking,
+      trackingHistory: trackingHistory.items,
+      cancellation,
+      pickupOtp,
+      deliveryOtp,
+      rating,
+      feedback,
+    });
+
     return {
       success: true,
-      data: toDeliveryHistoryDetail({
-        delivery,
-        role: input.role,
-        timeline,
-        orchestration,
-        booking,
-        driver,
-        latestTracking,
-        trackingHistory: trackingHistory.items,
-        cancellation,
-        pickupOtp,
-        deliveryOtp,
-        rating,
-        feedback,
-      }),
+      data: await enrichHistoryDetailPhotoUrls(historyDetail),
     };
   }
 }

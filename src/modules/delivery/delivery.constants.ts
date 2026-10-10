@@ -1,4 +1,34 @@
-export const DELIVERY_REFERENCE_PREFIX = "DOTT";
+export const DELIVERY_REFERENCE_PREFIX = "DOOT";
+
+/** Client-uploaded photos before create (Next.js presign). */
+export function customerStagingPhotoPrefix(customerId: string): string {
+  return `staging/${customerId}/`;
+}
+
+export function isCustomerStagingPhotoKey(
+  customerId: string,
+  objectKey: string,
+): boolean {
+  const prefix = customerStagingPhotoPrefix(customerId);
+  if (!objectKey.startsWith(prefix)) {
+    return false;
+  }
+  const rest = objectKey.slice(prefix.length);
+  return /^[0-9a-f-]{36}\/photos\/[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/i.test(rest);
+}
+
+/** Customer list/detail: hide draft orchestration deliveries from "My deliveries". */
+export const CUSTOMER_VISIBLE_DELIVERY_STATUSES = [
+  "BOOKING",
+  "BOOKED",
+  "DRIVER_ASSIGNED",
+  "PICKUP_OTP_PENDING",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERY_OTP_PENDING",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
 
 /** Inclusive bounds for WGS84 coordinates on delivery locations. */
 export const MIN_LATITUDE = -90;

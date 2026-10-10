@@ -13,7 +13,11 @@ import { confirmDeliveryBodySchema } from "../src/modules/booking/booking.schema
 import { BookingService } from "../src/modules/booking/booking.service.js";
 import { deliveryIdParamsSchema } from "../src/modules/delivery/delivery.schema.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
-import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
+import {
+  seedOptionReadyDelivery,
+  seedPaidPayment,
+} from "./helpers/booking-test-helpers.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
@@ -27,6 +31,7 @@ describe("Booking HTTP", () => {
   let providerRepo: InMemoryProviderRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let bookingRepo: InMemoryBookingRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let authRepo: InMemoryAuthRepository;
   let customerId: string;
   let token: string;
@@ -38,6 +43,7 @@ describe("Booking HTTP", () => {
     providerRepo = new InMemoryProviderRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     bookingRepo = new InMemoryBookingRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     authRepo = new InMemoryAuthRepository();
     executeMock = vi.fn();
     const customer = await authRepo.createUser({
@@ -61,6 +67,7 @@ describe("Booking HTTP", () => {
       orchestrationRepo,
       bookingRepo,
       executor,
+      paymentRepo,
     );
     const controller = new BookingController(service);
     const app = express();
@@ -120,6 +127,7 @@ describe("Booking HTTP", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     const app = buildApp();
     const res = await request(app)
@@ -143,6 +151,7 @@ describe("Booking HTTP", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
     const other = await authRepo.createUser({
       name: "Other",
       email: "other@example.com",

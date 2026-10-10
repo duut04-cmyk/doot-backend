@@ -23,9 +23,7 @@ import {
   ProviderAdapterExecutor,
   providerAdapterExecutor,
 } from "../provider/adapters/provider-adapter-executor.js";
-import {
-  buildCancellationCorrelationReference,
-} from "./cancellation.constants.js";
+import { buildCancellationCorrelationReference } from "./cancellation.constants.js";
 import {
   canCancelWithBooking,
   isProviderCancellationEligible,
@@ -39,6 +37,12 @@ import {
   type CancellationResponsePayload,
   type ICancellationRepository,
 } from "./cancellation.repository.js";
+import {
+  paymentRepository,
+  type IPaymentRepository,
+} from "../payment/payment.repository.js";
+import { paymentService, type PaymentService } from "../payment/payment.service.js";
+import { refundPrepaidAfterCancellation } from "./cancellation-refund.js";
 
 export class CancellationService {
   constructor(
@@ -48,6 +52,8 @@ export class CancellationService {
     private readonly cancellationRepo: ICancellationRepository = cancellationRepository,
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
     private readonly adapterExecutor: ProviderAdapterExecutor = providerAdapterExecutor,
+    private readonly payments: IPaymentRepository = paymentRepository,
+    private readonly paymentSvc: PaymentService = paymentService,
   ) {}
 
   async cancel(input: {
@@ -110,8 +116,9 @@ export class CancellationService {
       });
     }
 
-    const latestCancellation =
-      await this.cancellationRepo.findLatestByDeliveryId(input.deliveryId);
+    const latestCancellation = await this.cancellationRepo.findLatestByDeliveryId(
+      input.deliveryId,
+    );
     if (latestCancellation?.status === "UNKNOWN") {
       throw new AppError(
         "Cancellation outcome is unknown. Reconciliation is required before retrying.",
@@ -215,6 +222,7 @@ export class CancellationService {
       failureMessage: resolved.failureMessage,
     });
 
+    let refundSummary: CancellationResponsePayload["refund"] = null;
     if (finalStatus === "CANCELLED") {
       await this.lifecycle.transition({
         deliveryId: input.deliveryId,
@@ -224,6 +232,15 @@ export class CancellationService {
         source: "CUSTOMER",
         reason: "Delivery cancelled",
         metadata: { cancellationId: finalized.id },
+      });
+
+      refundSummary = await refundPrepaidAfterCancellation({
+        deliveryId: input.deliveryId,
+        cancellationId: finalized.id,
+        reasonCode: input.reasonCode,
+        reasonMessage: input.reasonMessage ?? null,
+        payments: this.payments,
+        paymentSvc: this.paymentSvc,
       });
     }
 
@@ -240,6 +257,7 @@ export class CancellationService {
         reasonCode: finalized.reasonCode,
         cancelledAt: finalized.cancelledAt?.toISOString() ?? null,
       },
+      refund: refundSummary,
     };
 
     if (input.idempotencyKey) {
@@ -257,13 +275,10 @@ export class CancellationService {
     }
 
     if (finalStatus === "REJECTED") {
-      throw new AppError(
-        finalized.failureMessage ?? "Cancellation was rejected.",
-        {
-          statusCode: 422,
-          code: ErrorCodes.PROVIDER_CANCELLATION_REJECTED,
-        },
-      );
+      throw new AppError(finalized.failureMessage ?? "Cancellation was rejected.", {
+        statusCode: 422,
+        code: ErrorCodes.PROVIDER_CANCELLATION_REJECTED,
+      });
     }
 
     if (finalStatus === "UNKNOWN") {
@@ -281,11 +296,7 @@ export class CancellationService {
     return { success: true as const, data: response };
   }
 
-  async getCancellation(input: {
-    deliveryId: string;
-    userId: string;
-    role: UserRole;
-  }) {
+  async getCancellation(input: { deliveryId: string; userId: string; role: UserRole }) {
     await loadAuthorizedDelivery(
       this.deliveryRepo,
       input.deliveryId,

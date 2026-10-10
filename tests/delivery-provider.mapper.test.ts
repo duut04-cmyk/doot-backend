@@ -10,7 +10,7 @@ import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 const delivery: DeliveryDetailDto = {
   id: "11111111-1111-1111-1111-111111111111",
-  reference: "DOTT-2000",
+  reference: "DOOT-2000",
   status: "CREATED",
   pickup: {
     addressText: "12 MG Road",
@@ -87,6 +87,6 @@ describe("Delivery to provider mapper", () => {
 
   it("maps availability request", () => {
     const availability = toAvailabilityRequest(delivery);
-    expect(availability.deliveryReference).toBe("DOTT-2000");
+    expect(availability.deliveryReference).toBe("DOOT-2000");
   });
 });

@@ -52,7 +52,7 @@ describe("OperationalPollingService", () => {
     return {
       deliveryId,
       deliveryStatus: status,
-      deliveryReference: `DOTT-${deliveryId.slice(0, 8)}`,
+      deliveryReference: `DOOT-${deliveryId.slice(0, 8)}`,
       providerBookingId: "booking-1",
       providerId: "provider-1",
       providerCode: "MOCK",

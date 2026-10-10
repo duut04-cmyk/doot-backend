@@ -7,7 +7,7 @@ import {
 const secret = "test-cashfree-secret-key";
 const timestamp = "1746427759733";
 const rawBody =
-  '{"type":"PAYMENT_SUCCESS_WEBHOOK","data":{"order":{"order_id":"DOTT-abc"}}}';
+  '{"type":"PAYMENT_SUCCESS_WEBHOOK","data":{"order":{"order_id":"DOOT-abc"}}}';
 
 describe("Cashfree webhook signature verification", () => {
   it("computes valid signature", () => {

@@ -47,11 +47,13 @@ import {
 } from "./booking.quote-freshness.js";
 import type { CancellationPolicySnapshot } from "../provider/contracts/cancellation-policy.js";
 import { providerAdapterRegistry } from "../provider/adapters/provider-adapter-registry.js";
-import {
-  bookingRepository,
-  type IBookingRepository,
-} from "./booking.repository.js";
+import { bookingRepository, type IBookingRepository } from "./booking.repository.js";
+import { enrichQuoteSnapshotWithCustomerPricing } from "../pricing/customer-delivery-pricing.js";
 import type { QuoteSnapshot } from "./booking.types.js";
+import {
+  paymentRepository,
+  type IPaymentRepository,
+} from "../payment/payment.repository.js";
 
 const CONFIRMABLE_STATUSES = new Set(["OPTION_READY"]);
 const TERMINAL_BOOKING_STATUSES = new Set(["BOOKED", "FAILED", "UNKNOWN"]);
@@ -63,6 +65,7 @@ export class BookingService {
     private readonly orchestrationRepo: IOrchestrationRepository = orchestrationRepository,
     private readonly bookingRepo: IBookingRepository = bookingRepository,
     private readonly adapterExecutor: ProviderAdapterExecutor = providerAdapterExecutor,
+    private readonly paymentRepo: IPaymentRepository = paymentRepository,
   ) {}
 
   async confirm(input: {
@@ -151,10 +154,17 @@ export class BookingService {
       });
     }
 
-    const orchestration =
-      await this.orchestrationRepo.findLatestCompletedByDeliveryId(
-        input.deliveryId,
-      );
+    const payment = await this.paymentRepo.findByDeliveryId(input.deliveryId);
+    if (!payment || payment.status !== "PAID") {
+      throw new AppError("Payment must be completed before booking confirmation.", {
+        statusCode: 422,
+        code: ErrorCodes.PAYMENT_REQUIRED,
+      });
+    }
+
+    const orchestration = await this.orchestrationRepo.findLatestCompletedByDeliveryId(
+      input.deliveryId,
+    );
     const selectedOption = orchestration?.selectedOption;
     if (!orchestration || !selectedOption) {
       throw new AppError("No selected orchestration option found for delivery.", {
@@ -243,17 +253,16 @@ export class BookingService {
           },
         );
       }
-      quoteSnapshot = {
+      quoteSnapshot = enrichQuoteSnapshotWithCustomerPricing({
         amount: refreshed.amount.amount,
         currency: refreshed.amount.currency,
         providerQuoteId: refreshed.providerQuoteId,
         quotedAt: refreshed.quotedAt ?? new Date().toISOString(),
-      };
+      });
     }
 
-    const policySnapshot = selectedOption.cancellationPolicySnapshot as
-      | CancellationPolicySnapshot
-      | null;
+    const policySnapshot =
+      selectedOption.cancellationPolicySnapshot as CancellationPolicySnapshot | null;
     if (policySnapshot?.policyKnown) {
       const adapter = providerAdapterRegistry.resolve(selectedOption.providerCode);
       if (adapter?.supportsOperation("getCancellationPolicy")) {
@@ -295,9 +304,7 @@ export class BookingService {
       }
     }
 
-    const attemptNumber = await this.bookingRepo.getNextAttemptNumber(
-      input.deliveryId,
-    );
+    const attemptNumber = await this.bookingRepo.getNextAttemptNumber(input.deliveryId);
     const correlationReference = buildBookingCorrelationReference(
       delivery.reference,
       attemptNumber,
@@ -431,11 +438,7 @@ export class BookingService {
     return { success: true as const, data: response };
   }
 
-  async getBooking(input: {
-    deliveryId: string;
-    userId: string;
-    role: UserRole;
-  }) {
+  async getBooking(input: { deliveryId: string; userId: string; role: UserRole }) {
     const deliveryRecord = await this.loadAuthorizedDelivery(
       input.deliveryId,
       input.userId,

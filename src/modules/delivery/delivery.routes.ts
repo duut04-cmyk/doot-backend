@@ -5,6 +5,8 @@ import { requireRole } from "../../core/middleware/authorize.js";
 import { validateRequest } from "../../core/validation/index.js";
 import type { BookingController } from "../booking/booking.controller.js";
 import { createBookingRouter } from "../booking/booking.routes.js";
+import type { ExperienceController } from "../experience/experience.controller.js";
+import { createExperienceRouter } from "../experience/experience.routes.js";
 import type { FeedbackController } from "../feedback/feedback.controller.js";
 import { createFeedbackRouter } from "../feedback/feedback.routes.js";
 import { createOperationalRouter } from "../operations/operational.routes.js";
@@ -35,6 +37,7 @@ export function createDeliveryRouter(
     paymentController?: PaymentController;
     ratingController?: RatingController;
     feedbackController?: FeedbackController;
+    experienceController?: ExperienceController;
     authenticateMiddleware?: AuthenticateMiddleware;
   },
 ): Router {
@@ -47,6 +50,7 @@ export function createDeliveryRouter(
   router.use(createOperationalRouter());
   router.use(createRatingRouter(options?.ratingController, auth));
   router.use(createFeedbackRouter(options?.feedbackController, auth));
+  router.use(createExperienceRouter(options?.experienceController, auth));
 
   router.post(
     "/",

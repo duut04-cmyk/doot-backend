@@ -218,7 +218,24 @@ async function main() {
       orchStatus.res.ok && selectedOption?.providerCode === "MOCK",
     );
 
-    // 4. CONFIRM
+    // 4. PAYMENT (STUB auto-settles to PAID)
+    const paid = await api(`/deliveries/${deliveryId}/payment`, {
+      method: "POST",
+      token: customerToken,
+      body: {},
+      idempotencyKey: randomUUID(),
+    });
+    const paymentStatus = (paid.json as { data?: { payment?: { status?: string } } })
+      .data?.payment?.status;
+    record(
+      "PAYMENT → PAID",
+      "POST /deliveries/:id/payment",
+      paid.res,
+      paid.json,
+      paid.res.ok && paymentStatus === "PAID",
+    );
+
+    // 5. CONFIRM
     const confirmed = await api(`/deliveries/${deliveryId}/confirm`, {
       method: "POST",
       token: customerToken,
@@ -236,7 +253,7 @@ async function main() {
       confirmed.res.ok && bookedStatus === "BOOKED",
     );
 
-    // 5. BOOKING
+    // 6. BOOKING
     const booking = await api(`/deliveries/${deliveryId}/booking`, {
       token: customerToken,
     });
@@ -248,7 +265,7 @@ async function main() {
       booking.res.ok,
     );
 
-    // 6. ADMIN — driver simulate
+    // 7. ADMIN — driver simulate
     const simulate = await api(`/admin/deliveries/${deliveryId}/driver/simulate`, {
       method: "POST",
       token: adminToken,
@@ -461,6 +478,23 @@ async function main() {
       cancelOrchestrated.res.ok,
     );
 
+    const cancelPaid = await api(`/deliveries/${cancelDeliveryId}/payment`, {
+      method: "POST",
+      token: customerToken,
+      body: {},
+      idempotencyKey: randomUUID(),
+    });
+    const cancelPayStatus = (
+      cancelPaid.json as { data?: { payment?: { status?: string } } }
+    ).data?.payment?.status;
+    record(
+      "CANCEL PAYMENT → PAID",
+      "POST /deliveries/:id/payment",
+      cancelPaid.res,
+      cancelPaid.json,
+      cancelPaid.res.ok && cancelPayStatus === "PAID",
+    );
+
     const cancelConfirmed = await api(`/deliveries/${cancelDeliveryId}/confirm`, {
       method: "POST",
       token: customerToken,
@@ -487,15 +521,30 @@ async function main() {
       },
       idempotencyKey: randomUUID(),
     });
-    const cancelResultStatus = (
-      cancelResponse.json as { data?: { delivery?: { status?: string } } }
-    ).data?.delivery?.status;
+    const cancelPayload = cancelResponse.json as {
+      data?: {
+        delivery?: { status?: string };
+        refund?: { status?: string; amount?: number } | null;
+      };
+    };
+    const cancelResultStatus = cancelPayload.data?.delivery?.status;
+    const cancelRefund = cancelPayload.data?.refund;
     record(
       "CANCELLED",
       "POST /deliveries/:id/cancel",
       cancelResponse.res,
       cancelResponse.json,
       cancelResponse.res.ok && cancelResultStatus === "CANCELLED",
+    );
+    record(
+      "CANCEL REFUND",
+      "POST /deliveries/:id/cancel (refund summary)",
+      cancelResponse.res,
+      cancelResponse.json,
+      cancelResponse.res.ok &&
+        cancelRefund?.status === "SUCCESS" &&
+        typeof cancelRefund.amount === "number" &&
+        cancelRefund.amount > 0,
     );
 
     const cancelHistory = await api(`/deliveries/${cancelDeliveryId}/history`, {
