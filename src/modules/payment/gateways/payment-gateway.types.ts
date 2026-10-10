@@ -35,11 +35,21 @@ export type GatewayRefundInput = {
   gatewayOrderId: string;
   amount: number;
   currency: PaymentCurrency;
+  /** Merchant refund id (Cashfree refund_id), 3–40 alphanumeric */
+  merchantRefundId: string;
   idempotencyKey: string;
+  refundNote?: string | null;
 };
 
 export type GatewayRefundResult = {
+  /** Merchant refund id used with the gateway */
   gatewayRefundId: string;
+  /** Provider-side refund reference (e.g. cf_refund_id) when available */
   gatewayRefundReference?: string | null;
   status: "PENDING" | "SUCCESS" | "FAILED";
+};
+
+export type GatewayRefundStatusInput = {
+  gatewayOrderId: string;
+  gatewayRefundId: string;
 };

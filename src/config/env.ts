@@ -117,6 +117,24 @@ const envSchema = z
 
     OPERATIONAL_POLL_BATCH_SIZE: z.coerce.number().int().positive().default(50),
 
+    /** Customer track-page happy-path simulator (MOCK bookings only; never use in production). */
+    ENABLE_DEV_DELIVERY_SIMULATE: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    /** Wall-clock budget for evaluating all providers during orchestration (ms). */
+    ORCHESTRATION_MAX_DURATION_MS: z.coerce.number().int().positive().optional(),
+
+    /**
+     * When true (non-production), only evaluate the MOCK provider during orchestration.
+     * Speeds local create-flow quotes; never enable in production.
+     */
+    ORCHESTRATION_MOCK_ONLY: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
     /** Active payment gateway: stub (default) or cashfree */
     PAYMENT_GATEWAY: z
       .preprocess(
@@ -154,6 +172,14 @@ const envSchema = z
       .preprocess((value) => value === "true" || value === true, z.boolean())
       .optional()
       .default(false),
+
+    /** Cloudflare R2 (S3-compatible) for delivery package photos */
+    R2_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_ACCESS_KEY_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    R2_BUCKET_NAME: z.preprocess(emptyToUndefined, z.string().min(1).default("doot")),
+    /** Public bucket URL or custom domain (no trailing slash), e.g. https://pub-xxxx.r2.dev */
+    R2_PUBLIC_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "test" && !data.JWT_ACCESS_SECRET) {
@@ -189,6 +215,42 @@ const envSchema = z
         }
       }
     }
+
+    const cashfreeSelected =
+      data.PAYMENT_GATEWAY === "cashfree" || data.CASHFREE_ENABLED;
+    if (cashfreeSelected && data.NODE_ENV !== "test") {
+      if (!data.CASHFREE_CLIENT_ID) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["CASHFREE_CLIENT_ID"],
+          message:
+            "CASHFREE_CLIENT_ID is required when PAYMENT_GATEWAY=cashfree or CASHFREE_ENABLED=true",
+        });
+      }
+      if (!data.CASHFREE_CLIENT_SECRET) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["CASHFREE_CLIENT_SECRET"],
+          message:
+            "CASHFREE_CLIENT_SECRET is required when PAYMENT_GATEWAY=cashfree or CASHFREE_ENABLED=true",
+        });
+      }
+      if (data.CASHFREE_ENVIRONMENT === "production") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["CASHFREE_ENVIRONMENT"],
+          message:
+            "Cashfree production is not enabled; use CASHFREE_ENVIRONMENT=sandbox",
+        });
+      }
+      if (data.PAYMENT_GATEWAY === "cashfree" && !data.CASHFREE_ENABLED) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["CASHFREE_ENABLED"],
+          message: "CASHFREE_ENABLED must be true when PAYMENT_GATEWAY=cashfree",
+        });
+      }
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;
@@ -203,7 +265,15 @@ function loadEnv(): Env {
     throw new Error(`Invalid environment configuration: ${details}`);
   }
 
-  return parsed.data;
+  const data = parsed.data;
+  const orchestrationMaxDurationMs =
+    data.ORCHESTRATION_MAX_DURATION_MS ??
+    (data.NODE_ENV === "production" ? 45_000 : 8_000);
+
+  return {
+    ...data,
+    ORCHESTRATION_MAX_DURATION_MS: orchestrationMaxDurationMs,
+  };
 }
 
 export const env = loadEnv();
@@ -323,4 +393,17 @@ export function requireCashfreeCredentials(): {
     clientSecret: env.CASHFREE_CLIENT_SECRET,
     apiVersion: env.CASHFREE_API_VERSION,
   };
+}
+
+export function isObjectStorageConfigured(): boolean {
+  return Boolean(
+    env.R2_ACCOUNT_ID?.trim() &&
+    env.R2_ACCESS_KEY_ID?.trim() &&
+    env.R2_SECRET_ACCESS_KEY?.trim(),
+  );
+}
+
+/** Backend can attach photo URLs when public base or signed-read credentials exist. */
+export function canResolvePackagePhotoUrls(): boolean {
+  return Boolean(env.R2_PUBLIC_BASE_URL?.trim()) || isObjectStorageConfigured();
 }

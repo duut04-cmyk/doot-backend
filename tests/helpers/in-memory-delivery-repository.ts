@@ -246,7 +246,11 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
     filters?: DeliveryListFilters,
   ): StoredDelivery[] {
     return items.filter((item) => {
-      if (filters?.status && item.status !== filters.status) {
+      if (filters?.statusIn && filters.statusIn.length > 0) {
+        if (!filters.statusIn.includes(item.status)) {
+          return false;
+        }
+      } else if (filters?.status && item.status !== filters.status) {
         return false;
       }
       if (filters?.from && item.createdAt.getTime() < filters.from.getTime()) {

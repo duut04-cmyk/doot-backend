@@ -4,6 +4,7 @@ import type {
   GatewayPaymentStatusResult,
   GatewayRefundInput,
   GatewayRefundResult,
+  GatewayRefundStatusInput,
 } from "./payment-gateway.types.js";
 
 export interface PaymentGateway {
@@ -22,5 +23,5 @@ export interface PaymentGateway {
 
   createRefund(input: GatewayRefundInput): Promise<GatewayRefundResult>;
 
-  getRefundStatus(input: { gatewayRefundId: string }): Promise<GatewayRefundResult>;
+  getRefundStatus(input: GatewayRefundStatusInput): Promise<GatewayRefundResult>;
 }

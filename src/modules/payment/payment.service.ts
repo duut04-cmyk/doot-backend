@@ -4,12 +4,16 @@ import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import type { QuoteSnapshot } from "../booking/booking.types.js";
+import { resolveCustomerPayableAmount } from "../pricing/customer-delivery-pricing.js";
 import { loadAuthorizedDelivery } from "../delivery/delivery-access.js";
 import {
   deliveryRepository,
-  type DeliveryWithRelations,
   type IDeliveryRepository,
 } from "../delivery/delivery.repository.js";
+import {
+  deliveryContactPhoneFallback,
+  resolveGatewayCustomerPhone,
+} from "./gateway-customer-phone.js";
 import {
   orchestrationRepository,
   type IOrchestrationRepository,
@@ -42,17 +46,6 @@ import type {
 import { canTransitionPayment, canTransitionRefund } from "./payment.transitions.js";
 
 const ACTIVE_CREATE_STATUSES = new Set<PaymentStatus>(["CREATED", "PENDING"]);
-
-function deliveryContactPhoneFallback(
-  delivery: Pick<DeliveryWithRelations, "pickup" | "drop">,
-): string | undefined {
-  for (const leg of [delivery.pickup, delivery.drop]) {
-    if (leg.contactPhoneCountryCode && leg.contactPhoneNumber) {
-      return `${leg.contactPhoneCountryCode}${leg.contactPhoneNumber}`;
-    }
-  }
-  return undefined;
-}
 
 export class PaymentService {
   constructor(
@@ -369,6 +362,7 @@ export class PaymentService {
     idempotencyKey: string;
     reasonCode?: string | null;
     reason?: string | null;
+    refundNote?: string | null;
   }): Promise<RefundDto> {
     const payment = await this.paymentRepo.findById(input.paymentId);
     if (!payment) {
@@ -399,6 +393,13 @@ export class PaymentService {
       return existing;
     }
 
+    if (!payment.gatewayOrderId) {
+      throw new AppError("Payment has no gateway order to refund.", {
+        statusCode: 422,
+        code: ErrorCodes.REFUND_NOT_ALLOWED,
+      });
+    }
+
     const reserved = await this.paymentRepo.sumActiveRefundAmounts(payment.id);
     const paidDecimal = toMoneyDecimal(payment.amount);
     const requestedDecimal = toMoneyDecimal(input.amount);
@@ -417,7 +418,7 @@ export class PaymentService {
       });
     }
 
-    return this.paymentRepo.createRefund({
+    const refund = await this.paymentRepo.createRefund({
       paymentId: payment.id,
       deliveryId: payment.deliveryId,
       amount: input.amount,
@@ -427,6 +428,100 @@ export class PaymentService {
       reason: input.reason ?? null,
       status: "REQUESTED",
     });
+
+    const merchantRefundId = buildMerchantRefundId(refund.id);
+    const gateway = getPaymentGateway(payment.gateway);
+
+    try {
+      const gatewayResult = await gateway.createRefund({
+        paymentId: payment.id,
+        gatewayOrderId: payment.gatewayOrderId,
+        amount: input.amount,
+        currency: payment.currency,
+        merchantRefundId,
+        idempotencyKey: input.idempotencyKey,
+        refundNote: input.refundNote ?? input.reason ?? null,
+      });
+
+      const pending = await this.paymentRepo.updateRefundStatus({
+        refundId: refund.id,
+        fromStatuses: ["REQUESTED"],
+        toStatus: "PENDING",
+        gatewayRefundId: gatewayResult.gatewayRefundId,
+        gatewayRefundReference: gatewayResult.gatewayRefundReference ?? null,
+      });
+
+      if (gatewayResult.status === "SUCCESS") {
+        return this.markRefundSuccessful({
+          refundId: refund.id,
+          gatewayRefundId: gatewayResult.gatewayRefundId,
+          gatewayRefundReference: gatewayResult.gatewayRefundReference ?? null,
+        });
+      }
+
+      if (gatewayResult.status === "FAILED") {
+        return this.markRefundFailed({
+          refundId: refund.id,
+          reason: "Gateway reported refund failure.",
+        });
+      }
+
+      return pending ?? (await this.paymentRepo.findRefundById(refund.id))!;
+    } catch (error) {
+      await this.markRefundFailed({
+        refundId: refund.id,
+        reason: error instanceof Error ? error.message : "Gateway refund failed.",
+      }).catch(() => null);
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError("Payment gateway refund failed.", {
+        statusCode: 502,
+        code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
+      });
+    }
+  }
+
+  async reconcileRefundStatus(refundId: string): Promise<RefundDto> {
+    const refund = await this.paymentRepo.findRefundById(refundId);
+    if (!refund) {
+      throw new AppError("Refund not found.", {
+        statusCode: 404,
+        code: ErrorCodes.REFUND_NOT_FOUND,
+      });
+    }
+    if (refund.status === "SUCCESS" || refund.status === "FAILED") {
+      return refund;
+    }
+    if (!refund.gatewayRefundId) {
+      return refund;
+    }
+
+    const payment = await this.paymentRepo.findById(refund.paymentId);
+    if (!payment?.gatewayOrderId) {
+      return refund;
+    }
+
+    const gateway = getPaymentGateway(payment.gateway);
+    const status = await gateway.getRefundStatus({
+      gatewayOrderId: payment.gatewayOrderId,
+      gatewayRefundId: refund.gatewayRefundId,
+    });
+
+    if (status.status === "SUCCESS") {
+      return this.markRefundSuccessful({
+        refundId: refund.id,
+        gatewayRefundId: status.gatewayRefundId,
+        gatewayRefundReference: status.gatewayRefundReference ?? null,
+      });
+    }
+    if (status.status === "FAILED") {
+      return this.markRefundFailed({
+        refundId: refund.id,
+        reason: "Gateway reported refund failure on reconcile.",
+      });
+    }
+    return refund;
   }
 
   async markRefundSuccessful(input: {
@@ -434,100 +529,282 @@ export class PaymentService {
     gatewayRefundId?: string | null;
     gatewayRefundReference?: string | null;
   }): Promise<RefundDto> {
-    const refundRow = await this.paymentRepo.withTransaction(async (tx) => {
-      const refund = await this.paymentRepo.findRefundById(input.refundId);
-      if (!refund) {
-        throw new AppError("Refund not found.", {
-          statusCode: 404,
-          code: ErrorCodes.REFUND_NOT_FOUND,
-        });
-      }
-
-      if (refund.status === "SUCCESS") {
-        return refund;
-      }
-
-      if (!canTransitionRefund(refund.status, "SUCCESS")) {
-        throw new AppError("Invalid refund status transition.", {
-          statusCode: 409,
-          code: ErrorCodes.REFUND_INVALID_TRANSITION,
-        });
-      }
-
-      const ledgerKey = ledgerIdempotencyKeyForRefund(refund.id);
-      const existingLedger =
-        await this.paymentRepo.findLedgerByIdempotencyKey(ledgerKey);
-      if (existingLedger) {
-        return refund;
-      }
-
-      const payment = await this.paymentRepo.findById(refund.paymentId);
-      if (!payment) {
-        throw new AppError("Payment not found.", {
-          statusCode: 404,
-          code: ErrorCodes.PAYMENT_NOT_FOUND,
-        });
-      }
-
-      const now = new Date();
-      const updatedRefund = await this.paymentRepo.updateRefundStatus(
-        {
-          refundId: refund.id,
-          fromStatuses: ["REQUESTED", "PENDING"],
-          toStatus: "SUCCESS",
-          gatewayRefundId: input.gatewayRefundId ?? null,
-          gatewayRefundReference: input.gatewayRefundReference ?? null,
-          processedAt: now,
-        },
-        tx,
+    try {
+      return await this.paymentRepo.withTransaction(
+        (tx) => this.finalizeRefundSuccessInTransaction(tx, input),
+        { maxWait: 10_000, timeout: 15_000 },
       );
-      if (!updatedRefund) {
-        throw new AppError("Invalid refund status transition.", {
-          statusCode: 409,
-          code: ErrorCodes.REFUND_INVALID_TRANSITION,
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const refund = await this.paymentRepo.findRefundById(input.refundId);
+        if (refund?.status === "SUCCESS") {
+          return refund;
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async finalizeRefundSuccessInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      refundId: string;
+      gatewayRefundId?: string | null;
+      gatewayRefundReference?: string | null;
+    },
+  ): Promise<RefundDto> {
+    const refund = await this.paymentRepo.findRefundById(input.refundId, tx);
+    if (!refund) {
+      throw new AppError("Refund not found.", {
+        statusCode: 404,
+        code: ErrorCodes.REFUND_NOT_FOUND,
+      });
+    }
+
+    const ledgerKey = ledgerIdempotencyKeyForRefund(refund.id);
+    const existingLedger = await this.paymentRepo.findLedgerByIdempotencyKey(
+      ledgerKey,
+      tx,
+    );
+
+    if (refund.status === "SUCCESS") {
+      return this.reconcileSuccessfulRefundRecord({
+        refund,
+        existingLedger,
+        tx,
+        ledgerKey,
+      });
+    }
+
+    if (!canTransitionRefund(refund.status, "SUCCESS")) {
+      throw new AppError("Invalid refund status transition.", {
+        statusCode: 409,
+        code: ErrorCodes.REFUND_INVALID_TRANSITION,
+      });
+    }
+
+    const payment = await this.paymentRepo.findById(refund.paymentId, tx);
+    if (!payment) {
+      throw new AppError("Payment not found.", {
+        statusCode: 404,
+        code: ErrorCodes.PAYMENT_NOT_FOUND,
+      });
+    }
+
+    const newRefundedTotal = payment.refundedAmount + refund.amount;
+    if (
+      !isRefundWithinPaidAmount({
+        paidAmount: toMoneyDecimal(payment.amount),
+        alreadyReserved: toMoneyDecimal(payment.refundedAmount),
+        requested: toMoneyDecimal(refund.amount),
+      })
+    ) {
+      throw new AppError("Refund exceeds paid amount.", {
+        statusCode: 409,
+        code: ErrorCodes.REFUND_EXCEEDS_PAID,
+      });
+    }
+
+    const nextPaymentStatus: PaymentStatus =
+      newRefundedTotal >= payment.amount ? "REFUNDED" : "PARTIALLY_REFUNDED";
+
+    if (!canTransitionPayment(payment.status, nextPaymentStatus)) {
+      throw new AppError("Invalid payment status transition.", {
+        statusCode: 409,
+        code: ErrorCodes.PAYMENT_INVALID_TRANSITION,
+      });
+    }
+
+    const now = new Date();
+    const updatedRefund = await this.paymentRepo.updateRefundStatus(
+      {
+        refundId: refund.id,
+        fromStatuses: ["REQUESTED", "PENDING"],
+        toStatus: "SUCCESS",
+        gatewayRefundId: input.gatewayRefundId ?? null,
+        gatewayRefundReference: input.gatewayRefundReference ?? null,
+        processedAt: now,
+      },
+      tx,
+    );
+
+    if (!updatedRefund) {
+      const current = await this.paymentRepo.findRefundById(refund.id, tx);
+      if (current?.status === "SUCCESS") {
+        return this.reconcileSuccessfulRefundRecord({
+          refund: current,
+          existingLedger:
+            existingLedger ??
+            (await this.paymentRepo.findLedgerByIdempotencyKey(ledgerKey, tx)),
+          tx,
+          ledgerKey,
         });
       }
+      throw new AppError("Invalid refund status transition.", {
+        statusCode: 409,
+        code: ErrorCodes.REFUND_INVALID_TRANSITION,
+      });
+    }
 
-      const newRefundedTotal = payment.refundedAmount + refund.amount;
-      const nextPaymentStatus: PaymentStatus =
-        newRefundedTotal >= payment.amount ? "REFUNDED" : "PARTIALLY_REFUNDED";
+    const updatedPayment = await this.paymentRepo.updatePaymentStatus(
+      {
+        paymentId: payment.id,
+        fromStatuses: ["PAID", "PARTIALLY_REFUNDED"],
+        toStatus: nextPaymentStatus,
+        refundedAmount: newRefundedTotal,
+      },
+      tx,
+    );
 
-      if (!canTransitionPayment(payment.status, nextPaymentStatus)) {
+    if (!updatedPayment) {
+      const currentPayment = await this.paymentRepo.findById(payment.id, tx);
+      if (
+        currentPayment &&
+        currentPayment.refundedAmount === newRefundedTotal &&
+        currentPayment.status === nextPaymentStatus
+      ) {
+        await this.ensureRefundLedgerEntry({
+          payment: currentPayment,
+          refund: updatedRefund,
+          ledgerKey,
+          tx,
+        });
+        return updatedRefund;
+      }
+      throw new AppError("Payment state could not be updated for refund.", {
+        statusCode: 409,
+        code: ErrorCodes.PAYMENT_INVALID_TRANSITION,
+      });
+    }
+
+    await this.ensureRefundLedgerEntry({
+      payment: updatedPayment,
+      refund: updatedRefund,
+      ledgerKey,
+      tx,
+    });
+
+    return updatedRefund;
+  }
+
+  private async reconcileSuccessfulRefundRecord(input: {
+    refund: RefundDto;
+    existingLedger: Awaited<
+      ReturnType<IPaymentRepository["findLedgerByIdempotencyKey"]>
+    >;
+    ledgerKey: string;
+    tx: Prisma.TransactionClient;
+  }): Promise<RefundDto> {
+    if (input.existingLedger) {
+      return input.refund;
+    }
+
+    const payment = await this.paymentRepo.findById(input.refund.paymentId, input.tx);
+    if (!payment) {
+      throw new AppError("Payment not found.", {
+        statusCode: 404,
+        code: ErrorCodes.PAYMENT_NOT_FOUND,
+      });
+    }
+
+    const successTotal = await this.paymentRepo.sumSuccessfulRefundAmounts(
+      payment.id,
+      input.tx,
+    );
+    const targetStatus: PaymentStatus =
+      successTotal >= payment.amount ? "REFUNDED" : "PARTIALLY_REFUNDED";
+
+    if (payment.refundedAmount !== successTotal || payment.status !== targetStatus) {
+      if (!canTransitionPayment(payment.status, targetStatus)) {
         throw new AppError("Invalid payment status transition.", {
           statusCode: 409,
           code: ErrorCodes.PAYMENT_INVALID_TRANSITION,
         });
       }
-
-      await this.paymentRepo.updatePaymentStatus(
+      const repaired = await this.paymentRepo.updatePaymentStatus(
         {
           paymentId: payment.id,
           fromStatuses: ["PAID", "PARTIALLY_REFUNDED"],
-          toStatus: nextPaymentStatus,
-          refundedAmount: newRefundedTotal,
+          toStatus: targetStatus,
+          refundedAmount: successTotal,
         },
-        tx,
+        input.tx,
       );
+      if (!repaired) {
+        const current = await this.paymentRepo.findById(payment.id, input.tx);
+        if (
+          !current ||
+          current.refundedAmount !== successTotal ||
+          current.status !== targetStatus
+        ) {
+          throw new AppError("Payment state could not be reconciled for refund.", {
+            statusCode: 409,
+            code: ErrorCodes.PAYMENT_INVALID_TRANSITION,
+          });
+        }
+      }
+    }
 
-      await this.paymentRepo.createLedgerEntry(
-        {
-          deliveryId: payment.deliveryId,
-          paymentId: payment.id,
-          refundId: refund.id,
-          type: "REFUND",
-          direction: "DEBIT",
-          amount: refund.amount,
-          currency: refund.currency,
-          description: "Customer refund processed",
-          idempotencyKey: ledgerKey,
-        },
-        tx,
-      );
+    const paymentForLedger =
+      (await this.paymentRepo.findById(payment.id, input.tx)) ?? payment;
 
-      return updatedRefund;
+    await this.ensureRefundLedgerEntry({
+      payment: paymentForLedger,
+      refund: input.refund,
+      ledgerKey: input.ledgerKey,
+      tx: input.tx,
     });
 
-    return refundRow;
+    return input.refund;
+  }
+
+  private async ensureRefundLedgerEntry(input: {
+    payment: PaymentDto;
+    refund: RefundDto;
+    ledgerKey: string;
+    tx: Prisma.TransactionClient;
+  }): Promise<void> {
+    const existing = await this.paymentRepo.findLedgerByIdempotencyKey(
+      input.ledgerKey,
+      input.tx,
+    );
+    if (existing) {
+      return;
+    }
+
+    try {
+      await this.paymentRepo.createLedgerEntry(
+        {
+          deliveryId: input.payment.deliveryId,
+          paymentId: input.payment.id,
+          refundId: input.refund.id,
+          type: "REFUND",
+          direction: "DEBIT",
+          amount: input.refund.amount,
+          currency: input.refund.currency,
+          description: "Customer refund processed",
+          idempotencyKey: input.ledgerKey,
+        },
+        input.tx,
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const ledger = await this.paymentRepo.findLedgerByIdempotencyKey(
+          input.ledgerKey,
+          input.tx,
+        );
+        if (ledger) {
+          return;
+        }
+      }
+      throw error;
+    }
   }
 
   async markRefundFailed(input: { refundId: string; reason?: string | null }) {
@@ -615,7 +892,9 @@ export class PaymentService {
       });
     }
 
-    if (!isPositiveMoney(toMoneyDecimal(quoteSnapshot.amount))) {
+    const customerPayableAmount = resolveCustomerPayableAmount(quoteSnapshot);
+
+    if (!isPositiveMoney(toMoneyDecimal(customerPayableAmount))) {
       throw new AppError("Invalid payment amount.", {
         statusCode: 422,
         code: ErrorCodes.PAYMENT_INVALID_AMOUNT,
@@ -635,7 +914,7 @@ export class PaymentService {
     }
 
     return {
-      amount: quoteSnapshot.amount,
+      amount: customerPayableAmount,
       currency,
       pricingSource: {
         orchestrationRequestId: orchestration.id,
@@ -664,16 +943,10 @@ export class PaymentService {
 
   private async loadGatewayCustomer(customerId: string, phoneFallback?: string) {
     const user = await authRepository.findUserById(customerId);
-    if (!user) {
-      return { customerId, phone: phoneFallback };
-    }
-    const phone =
-      user.phoneCountryCode && user.phoneNumber
-        ? `${user.phoneCountryCode}${user.phoneNumber}`
-        : (user.phoneNumber ?? phoneFallback);
+    const phone = resolveGatewayCustomerPhone(user, phoneFallback);
     return {
       customerId,
-      email: user.email,
+      email: user?.email,
       phone,
     };
   }
@@ -709,10 +982,15 @@ export class PaymentService {
     }
 
     const gateway = getPaymentGateway(this.gatewayCode);
-    const customer = await this.loadGatewayCustomer(
-      input.customerId,
-      input.customerPhoneFallback,
-    );
+    // STUB does not need auth DB lookup; delivery contact phone is enough.
+    const customer =
+      this.gatewayCode === "STUB"
+        ? {
+            customerId: input.customerId,
+            email: undefined as string | undefined,
+            phone: input.customerPhoneFallback,
+          }
+        : await this.loadGatewayCustomer(input.customerId, input.customerPhoneFallback);
 
     let order;
     try {
@@ -737,7 +1015,7 @@ export class PaymentService {
 
     const latestAttempt = await this.paymentRepo.findLatestAttempt(input.payment.id);
 
-    return this.paymentRepo.withTransaction(async (tx) => {
+    const refreshed = await this.paymentRepo.withTransaction(async (tx) => {
       const updated = await this.paymentRepo.updatePaymentStatus(
         {
           paymentId: input.payment.id,
@@ -773,15 +1051,25 @@ export class PaymentService {
         );
       }
 
-      const refreshed = await this.paymentRepo.findById(input.payment.id, tx);
-      if (!refreshed) {
+      const current = await this.paymentRepo.findById(input.payment.id, tx);
+      if (!current) {
         throw new AppError("Payment not found after gateway checkout.", {
           statusCode: 500,
           code: ErrorCodes.INTERNAL_ERROR,
         });
       }
-      return refreshed;
+      return current;
     });
+
+    // STUB settles instantly so local/mock booking can require PAID without Cashfree.
+    if (this.gatewayCode === "STUB" && refreshed.status === "PENDING") {
+      return this.markPaymentPaid({
+        paymentId: refreshed.id,
+        paymentMethod: "STUB",
+      });
+    }
+
+    return refreshed;
   }
 
   private async persistCreateIdempotency(
@@ -804,6 +1092,12 @@ export class PaymentService {
       responsePayload: response,
     });
   }
+}
+
+/** Cashfree merchant refund_id: 3–40 alphanumeric. */
+export function buildMerchantRefundId(refundId: string): string {
+  const compact = refundId.replace(/-/g, "");
+  return compact.length >= 3 ? compact.slice(0, 40) : `rf${compact}xx`;
 }
 
 export const paymentService = new PaymentService(

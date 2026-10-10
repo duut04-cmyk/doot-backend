@@ -141,7 +141,7 @@ describe("Delivery Phase 1 foundation", () => {
       });
 
       expect(result.data.status).toBe("CREATED");
-      expect(result.data.reference).toMatch(/^DOTT-\d+$/);
+      expect(result.data.reference).toMatch(/^DOOT-\d+$/);
       expect(result.data.package.sizeTier).toBe("MEDIUM");
       expect(result.data.compliance.accepted).toBe(true);
       expect(result.data.compliance.acceptedAt).toBeTruthy();
@@ -531,7 +531,7 @@ describe("Delivery Phase 1 foundation", () => {
         .set("Idempotency-Key", "http-create-1")
         .send(basePayload());
       expect(created.status).toBe(201);
-      expect(created.body.data.reference).toMatch(/^DOTT-\d+$/);
+      expect(created.body.data.reference).toMatch(/^DOOT-\d+$/);
       expect(created.body.data.status).toBe("CREATED");
       expect(deliveryRepo.deliveries).toHaveLength(1);
       expect(deliveryRepo.deliveries[0]?.customerId).toBe(customerId);
@@ -542,9 +542,19 @@ describe("Delivery Phase 1 foundation", () => {
       expect(listOwn.status).toBe(200);
       expect(listOwn.body).toMatchObject({
         success: true,
+        data: { total: 0 },
+      });
+      expect(listOwn.body.data.items).toHaveLength(0);
+
+      deliveryRepo.deliveries[0]!.status = "BOOKING";
+      const listVisible = await request(app)
+        .get("/api/v1/deliveries")
+        .set("Authorization", `Bearer ${token}`);
+      expect(listVisible.body).toMatchObject({
+        success: true,
         data: { total: 1 },
       });
-      expect(listOwn.body.data.items).toHaveLength(1);
+      expect(listVisible.body.data.items).toHaveLength(1);
 
       const listOther = await request(app)
         .get("/api/v1/deliveries")

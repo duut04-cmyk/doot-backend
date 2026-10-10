@@ -22,6 +22,7 @@ import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
@@ -38,6 +39,7 @@ describe("Cancellation HTTP", () => {
   let driverRepo: InMemoryDriverRepository;
   let otpRepo: InMemoryOtpRepository;
   let trackingRepo: InMemoryTrackingRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let cancellationRepo: InMemoryCancellationRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let providerRepo: InMemoryProviderRepository;
@@ -55,6 +57,7 @@ describe("Cancellation HTTP", () => {
     driverRepo = new InMemoryDriverRepository();
     otpRepo = new InMemoryOtpRepository();
     trackingRepo = new InMemoryTrackingRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     cancellationRepo = new InMemoryCancellationRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
@@ -114,6 +117,7 @@ describe("Cancellation HTTP", () => {
         cancellationRepo,
         lifecycle,
         executor,
+        paymentRepo,
       ),
     );
 

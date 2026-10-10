@@ -92,7 +92,7 @@ describe("CashfreePaymentWebhookService", () => {
   }
 
   it("processes success webhook and duplicate is idempotent", async () => {
-    const orderId = "DOTT-order-1";
+    const orderId = "DOOT-order-1";
     const paymentId = await seedPendingPayment(orderId, 100);
     const handler = buildHandler();
     const payload = {
@@ -139,7 +139,7 @@ describe("CashfreePaymentWebhookService", () => {
   });
 
   it("rejects amount mismatch", async () => {
-    const orderId = "DOTT-order-2";
+    const orderId = "DOOT-order-2";
     await seedPendingPayment(orderId, 100);
     const handler = buildHandler();
     const signed = signedBody({
@@ -159,7 +159,7 @@ describe("CashfreePaymentWebhookService", () => {
   });
 
   it("ignores pending after success", async () => {
-    const orderId = "DOTT-order-3";
+    const orderId = "DOOT-order-3";
     const paymentId = await seedPendingPayment(orderId, 80);
     const handler = buildHandler();
     const success = signedBody({
@@ -194,5 +194,206 @@ describe("CashfreePaymentWebhookService", () => {
 
     const payment = await paymentRepo.findById(paymentId);
     expect(payment?.status).toBe("PAID");
+  });
+
+  it("processes refund success webhook (local simulation)", async () => {
+    const orderId = "DOOT-order-refund-1";
+    const paymentId = await seedPendingPayment(orderId, 100);
+    const handler = buildHandler();
+    const paySigned = signedBody({
+      type: "PAYMENT_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: orderId, order_amount: 100, order_currency: "INR" },
+        payment: {
+          cf_payment_id: "cf-pay",
+          payment_status: "SUCCESS",
+          payment_amount: 100,
+        },
+      },
+    });
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: paySigned.rawBody,
+      signature: paySigned.signature,
+      timestamp: paySigned.timestamp,
+    });
+
+    const refund = await paymentRepo.createRefund({
+      paymentId,
+      deliveryId: (await paymentRepo.findById(paymentId))!.deliveryId,
+      amount: 100,
+      currency: "INR",
+      idempotencyKey: "cancel-refund-test",
+      status: "PENDING",
+    });
+    await paymentRepo.updateRefundStatus({
+      refundId: refund.id,
+      fromStatuses: ["PENDING"],
+      toStatus: "PENDING",
+      gatewayRefundId: "merchantRf1",
+      gatewayRefundReference: "cf-rf-1",
+    });
+
+    const refundSigned = signedBody({
+      type: "REFUND_STATUS_WEBHOOK",
+      data: {
+        order: { order_id: orderId, order_currency: "INR" },
+        refund: {
+          refund_id: "merchantRf1",
+          cf_refund_id: "cf-rf-1",
+          refund_status: "SUCCESS",
+          refund_amount: 100,
+          refund_currency: "INR",
+        },
+      },
+    });
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: refundSigned.rawBody,
+      signature: refundSigned.signature,
+      timestamp: refundSigned.timestamp,
+    });
+
+    const updated = await paymentRepo.findRefundById(refund.id);
+    expect(updated?.status).toBe("SUCCESS");
+    const payment = await paymentRepo.findById(paymentId);
+    expect(payment?.status).toBe("REFUNDED");
+  });
+
+  it("returns IGNORED for Cashfree dashboard WEBHOOK ping without payment data", async () => {
+    const handler = buildHandler();
+    const signed = signedBody({
+      type: "WEBHOOK",
+      event_time: "2026-10-10T06:08:13Z",
+      data: {},
+    });
+    const result = await handler.handle({
+      requestId: randomUUID(),
+      rawBody: signed.rawBody,
+      signature: signed.signature,
+      timestamp: signed.timestamp,
+    });
+    expect(result).toMatchObject({
+      processingStatus: "IGNORED",
+      reason: "unsupported_webhook_type",
+    });
+    expect(paymentRepo.payments.size).toBe(0);
+  });
+
+  it("returns IGNORED for unsupported signed webhook (200 path)", async () => {
+    const handler = buildHandler();
+    const signed = signedBody({
+      type: "VENDOR_SETTLEMENT_WEBHOOK",
+      data: { order: { order_id: "DOOT-unknown" } },
+    });
+    const result = await handler.handle({
+      requestId: randomUUID(),
+      rawBody: signed.rawBody,
+      signature: signed.signature,
+      timestamp: signed.timestamp,
+    });
+    expect(result).toMatchObject({
+      processingStatus: "IGNORED",
+      reason: "unsupported_webhook_type",
+    });
+  });
+
+  it("returns IGNORED for PAYMENT_CHARGES_WEBHOOK", async () => {
+    const orderId = "DOOT-charges";
+    await seedPendingPayment(orderId, 10);
+    const handler = buildHandler();
+    const signed = signedBody({
+      type: "PAYMENT_CHARGES_WEBHOOK",
+      data: {
+        order: { order_id: orderId },
+        payment: { payment_status: "SUCCESS", cf_payment_id: "99" },
+      },
+    });
+    const result = await handler.handle({
+      requestId: randomUUID(),
+      rawBody: signed.rawBody,
+      signature: signed.signature,
+      timestamp: signed.timestamp,
+    });
+    expect(result.processingStatus).toBe("IGNORED");
+    const payment = await paymentRepo.findByGatewayOrderId(orderId);
+    expect(payment?.status).toBe("PENDING");
+  });
+
+  it("does not overwrite SUCCESS refund with later FAILED (local simulation)", async () => {
+    const orderId = "DOOT-order-refund-2";
+    const paymentId = await seedPendingPayment(orderId, 50);
+    const handler = buildHandler();
+    const paySigned = signedBody({
+      type: "PAYMENT_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: orderId, order_amount: 50, order_currency: "INR" },
+        payment: {
+          cf_payment_id: "cf-pay-2",
+          payment_status: "SUCCESS",
+          payment_amount: 50,
+        },
+      },
+    });
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: paySigned.rawBody,
+      signature: paySigned.signature,
+      timestamp: paySigned.timestamp,
+    });
+
+    const refund = await paymentRepo.createRefund({
+      paymentId,
+      deliveryId: (await paymentRepo.findById(paymentId))!.deliveryId,
+      amount: 50,
+      currency: "INR",
+      idempotencyKey: "refund-ooo",
+      status: "PENDING",
+    });
+    await paymentRepo.updateRefundStatus({
+      refundId: refund.id,
+      fromStatuses: ["PENDING"],
+      toStatus: "PENDING",
+      gatewayRefundId: "merchantRf2",
+    });
+
+    const successSigned = signedBody({
+      type: "REFUND_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: orderId },
+        refund: {
+          refund_id: "merchantRf2",
+          refund_status: "SUCCESS",
+          refund_amount: 50,
+        },
+      },
+    });
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: successSigned.rawBody,
+      signature: successSigned.signature,
+      timestamp: successSigned.timestamp,
+    });
+
+    const failedSigned = signedBody({
+      type: "REFUND_FAILED_WEBHOOK",
+      data: {
+        order: { order_id: orderId },
+        refund: {
+          refund_id: "merchantRf2",
+          refund_status: "FAILED",
+          refund_amount: 50,
+        },
+      },
+    });
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: failedSigned.rawBody,
+      signature: failedSigned.signature,
+      timestamp: failedSigned.timestamp,
+    });
+
+    const updated = await paymentRepo.findRefundById(refund.id);
+    expect(updated?.status).toBe("SUCCESS");
   });
 });

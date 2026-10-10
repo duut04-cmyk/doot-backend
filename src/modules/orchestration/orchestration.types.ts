@@ -118,8 +118,12 @@ export type CustomerSelectedOptionDto = {
   providerCode: string;
   serviceCode: string | null;
   quote: {
+    /** Provider quote (excludes platform fee and GST). */
     amount: number;
     currency: string;
+    customerPayableAmount?: number;
+    platformFeeAmount?: number;
+    gstAmount?: number;
   };
   estimatedDeliveryAt: string | null;
   availability: {

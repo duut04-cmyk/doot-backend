@@ -7,7 +7,11 @@ import { classifyProviderAdapterError } from "../src/modules/booking/booking.pro
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
-import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
+import {
+  seedOptionReadyDelivery,
+  seedPaidPayment,
+} from "./helpers/booking-test-helpers.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { knownFixedFeeCancellationPolicy } from "./helpers/cancellation-policy-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
@@ -31,6 +35,7 @@ describe("Booking failure resilience", () => {
   let providerRepo: InMemoryProviderRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let bookingRepo: InMemoryBookingRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let executeMock: ReturnType<typeof vi.fn>;
   let customerId: string;
 
@@ -40,6 +45,7 @@ describe("Booking failure resilience", () => {
     providerRepo = new InMemoryProviderRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     bookingRepo = new InMemoryBookingRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     executeMock = vi.fn();
     customerId = randomUUID();
   });
@@ -51,6 +57,7 @@ describe("Booking failure resilience", () => {
       orchestrationRepo,
       bookingRepo,
       { execute: executeMock } as unknown as ProviderAdapterExecutor,
+      paymentRepo,
     );
   }
 
@@ -76,6 +83,7 @@ describe("Booking failure resilience", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({
@@ -131,6 +139,7 @@ describe("Booking failure resilience", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     await expect(
       buildService().confirm({
@@ -183,6 +192,7 @@ describe("Booking failure resilience", () => {
       providerRepo,
       customerId,
     });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
 
     const service = buildService();
     const first = service.confirm({

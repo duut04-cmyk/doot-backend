@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type DeliveryStatus } from "@prisma/client";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
@@ -9,6 +9,12 @@ import {
 } from "./delivery.repository.js";
 import type { CreateDeliveryBody, ListDeliveriesQuery } from "./delivery.schema.js";
 import { hashDeliveryCreateRequest } from "./delivery.schema.js";
+import { enrichDeliveryDetailPhotoUrls } from "./delivery-photo-urls.js";
+import {
+  CUSTOMER_VISIBLE_DELIVERY_STATUSES,
+  isCustomerStagingPhotoKey,
+} from "./delivery.constants.js";
+import { OBJECT_STORAGE_PROVIDER } from "../../infrastructure/object-storage/object-storage.constants.js";
 import { deriveSizeTier } from "./delivery.types.js";
 import type {
   CreateDeliveryResult,
@@ -26,8 +32,7 @@ export class DeliveryService {
     idempotencyKey: string;
     requestHash?: string;
   }): Promise<CreateDeliveryResult> {
-    const requestHash =
-      input.requestHash ?? hashDeliveryCreateRequest(input.body);
+    const requestHash = input.requestHash ?? hashDeliveryCreateRequest(input.body);
 
     const existing = await this.repository.findIdempotency(
       input.customerId,
@@ -47,6 +52,7 @@ export class DeliveryService {
     }
 
     const normalized = this.normalizeCreateInput(input.body);
+    this.assertPackagePhotoKeysForCustomer(input.customerId, normalized.package.photos);
 
     let created: Awaited<ReturnType<typeof toDeliveryDetailDto>>;
     try {
@@ -113,21 +119,45 @@ export class DeliveryService {
     query: ListDeliveriesQuery;
   }): Promise<ListDeliveriesResult> {
     const { page, limit, status, from, to, reference } = input.query;
-    const filters = {
-      status,
+    const filters: {
+      status?: DeliveryStatus;
+      statusIn?: DeliveryStatus[];
+      from?: Date;
+      to?: Date;
+      reference?: string;
+    } = {
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
       reference,
     };
+
+    if (input.role === "CUSTOMER") {
+      const visible = [...CUSTOMER_VISIBLE_DELIVERY_STATUSES];
+      if (status) {
+        if (!(visible as readonly DeliveryStatus[]).includes(status)) {
+          return {
+            success: true,
+            data: {
+              items: [],
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+            },
+          };
+        }
+        filters.status = status;
+      } else {
+        filters.statusIn = visible;
+      }
+    } else {
+      filters.status = status;
+    }
+
     const result =
       input.role === "ADMIN"
         ? await this.repository.listAll(page, limit, filters)
-        : await this.repository.listForCustomer(
-            input.customerId,
-            page,
-            limit,
-            filters,
-          );
+        : await this.repository.listForCustomer(input.customerId, page, limit, filters);
 
     return {
       success: true,
@@ -174,10 +204,7 @@ export class DeliveryService {
     const delivery =
       input.role === "ADMIN"
         ? await this.repository.findById(input.deliveryId)
-        : await this.repository.findByIdForCustomer(
-            input.deliveryId,
-            input.customerId,
-          );
+        : await this.repository.findByIdForCustomer(input.deliveryId, input.customerId);
 
     if (!delivery) {
       // Do not leak existence across customers.
@@ -187,7 +214,36 @@ export class DeliveryService {
       });
     }
 
-    return { success: true, data: toDeliveryDetailDto(delivery) };
+    const detail = toDeliveryDetailDto(delivery);
+    return {
+      success: true,
+      data: await enrichDeliveryDetailPhotoUrls(detail),
+    };
+  }
+
+  private assertPackagePhotoKeysForCustomer(
+    customerId: string,
+    photos: NormalizedCreateDelivery["package"]["photos"],
+  ): void {
+    for (const photo of photos) {
+      if (photo.storageProvider === OBJECT_STORAGE_PROVIDER) {
+        if (!isCustomerStagingPhotoKey(customerId, photo.objectKey)) {
+          throw new AppError("Invalid package photo reference.", {
+            statusCode: 400,
+            code: ErrorCodes.VALIDATION_ERROR,
+          });
+        }
+      }
+      if (
+        photo.storageProvider !== OBJECT_STORAGE_PROVIDER &&
+        photo.storageProvider !== "PENDING"
+      ) {
+        throw new AppError("Invalid package photo storage provider.", {
+          statusCode: 400,
+          code: ErrorCodes.VALIDATION_ERROR,
+        });
+      }
+    }
   }
 
   private normalizeCreateInput(body: CreateDeliveryBody): NormalizedCreateDelivery {

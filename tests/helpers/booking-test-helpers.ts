@@ -5,6 +5,7 @@ import type { InMemoryOrchestrationRepository } from "./in-memory-orchestration-
 import type { InMemoryProviderRepository } from "./in-memory-provider-repository.js";
 import { seedOrchestrationMockProvider } from "./provider-adapter-test-helpers.js";
 import { defaultCancellationPolicySnapshot } from "./cancellation-policy-test-helpers.js";
+import { enrichQuoteSnapshotWithCustomerPricing } from "../../src/modules/pricing/customer-delivery-pricing.js";
 
 export async function seedOptionReadyDelivery(input: {
   deliveryRepo: InMemoryDeliveryRepository;
@@ -129,12 +130,14 @@ export async function seedOptionReadyDelivery(input: {
       rawWeightedScore: 45,
     },
     selectionReason: "Selected based on price.",
-    quoteSnapshot: input.quoteSnapshot ?? {
-      amount: input.quoteAmount ?? 150,
-      currency: "INR",
-      providerQuoteId: "Q1",
-      quotedAt: new Date().toISOString(),
-    },
+    quoteSnapshot:
+      input.quoteSnapshot ??
+      enrichQuoteSnapshotWithCustomerPricing({
+        amount: input.quoteAmount ?? 150,
+        currency: "INR",
+        providerQuoteId: "Q1",
+        quotedAt: new Date().toISOString(),
+      }),
     availabilitySnapshot: { known: false },
     etaSnapshot: null,
     cancellationPolicySnapshot: defaultCancellationPolicySnapshot(),
@@ -151,4 +154,45 @@ export async function seedOptionReadyDelivery(input: {
 
 export function randomCustomerId() {
   return randomUUID();
+}
+
+/** Seed a PAID prepaid payment so booking.confirm can pass the payment gate. */
+export async function seedPaidPayment(input: {
+  paymentRepo: {
+    createPayment: (input: {
+      deliveryId: string;
+      customerId: string;
+      amount: number;
+      currency: "INR";
+      gateway: "STUB" | "CASHFREE";
+      pricingSource: "ORCHESTRATION_QUOTE" | "BOOKING_AMOUNT";
+    }) => Promise<{ id: string }>;
+    updatePaymentStatus: (input: {
+      paymentId: string;
+      fromStatuses: Array<"CREATED" | "PENDING" | "PAID">;
+      toStatus: "PAID";
+      gatewayOrderId?: string | null;
+      paidAt?: Date | null;
+    }) => Promise<unknown>;
+  };
+  deliveryId: string;
+  customerId: string;
+  amount?: number;
+}) {
+  const payment = await input.paymentRepo.createPayment({
+    deliveryId: input.deliveryId,
+    customerId: input.customerId,
+    amount: input.amount ?? 150,
+    currency: "INR",
+    gateway: "STUB",
+    pricingSource: "ORCHESTRATION_QUOTE",
+  });
+  await input.paymentRepo.updatePaymentStatus({
+    paymentId: payment.id,
+    fromStatuses: ["CREATED"],
+    toStatus: "PAID",
+    gatewayOrderId: `stub-${payment.id}`,
+    paidAt: new Date(),
+  });
+  return payment;
 }

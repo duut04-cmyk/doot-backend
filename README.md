@@ -169,7 +169,7 @@ GET  /api/v1/deliveries
 GET  /api/v1/deliveries/:id
 ```
 
-Authenticated customers create, list, and retrieve **their own** deliveries. `POST` requires an `Idempotency-Key` header and the `CUSTOMER` role. New deliveries start at `CREATED` with a server-generated `DOTT-{n}` reference. Pickup/drop may include optional WGS84 coordinates; providers, orchestration, booking, OTP, tracking, and pricing follow in later lifecycle steps.
+Authenticated customers create, list, and retrieve **their own** deliveries. `POST` requires an `Idempotency-Key` header and the `CUSTOMER` role. New deliveries start at `CREATED` with a server-generated `DOOT-{n}` reference. Pickup/drop may include optional WGS84 coordinates; providers, orchestration, booking, OTP, tracking, and pricing follow in later lifecycle steps.
 
 ### Roles and authorization
 
@@ -241,6 +241,8 @@ Phase 3 adds the adapter abstraction layer only — no real Shadowfax/Shiprocket
 - **HTTP boundary:** `ProviderHttpClient` centralizes fetch, timeouts, safe logging, and error mapping (used by future real adapters)
 - **Mock adapter:** `MOCK` test adapter registered in `NODE_ENV=test` or when `ENABLE_MOCK_PROVIDER_ADAPTER=true`
 
+**Local orchestration latency:** Each provider evaluation shares a wall-clock budget (`ORCHESTRATION_MAX_DURATION_MS`, default 15s outside production). Slow or misconfigured sandbox providers are marked `ERROR`/`PROVIDER_TIMEOUT` instead of blocking the full adapter HTTP timeout (~30s each). For the fastest local path, keep only the `MOCK` provider enabled in admin (or set `ENABLE_MOCK_PROVIDER_ADAPTER=true`) and disable other providers until their credentials are ready.
+
 `integrationStatus` remains `CONFIGURED` until an adapter is registered, credentials/capabilities exist, and health is `HEALTHY`. Real providers are not marked `READY` automatically.
 
 ### Adding a real provider adapter (Phase 4)
@@ -295,7 +297,7 @@ OPTION_READY → BOOKING → BOOKED
 
 - Uses the persisted Phase 5 selected orchestration option — clients cannot choose provider, price, or service
 - Optional `Idempotency-Key` header on confirm (same pattern as delivery create)
-- Stable provider correlation reference: `{reference}-BOOKING-{attempt}` (e.g. `DOTT-1000-BOOKING-1`)
+- Stable provider correlation reference: `{reference}-BOOKING-{attempt}` (e.g. `DOOT-1000-BOOKING-1`)
 - Quote freshness via `BOOKING_QUOTE_MAX_AGE_SECONDS` (default 300); stale quotes revalidated when provider supports `getQuote`
 - Material price changes return `409 BOOKING_OPTION_CHANGED` (no silent re-pricing)
 - Provider booking via `ProviderAdapterExecutor.createBooking` only — no direct provider HTTP in booking code

@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type {
   IPaymentRepository,
   PaymentCreateIdempotencyRecord,
+  PaymentTransactionOptions,
 } from "../../src/modules/payment/payment.repository.js";
 import type {
   LedgerEntryDto,
@@ -21,10 +22,37 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
   ledger = new Map<string, LedgerEntryDto>();
   idempotency = new Map<string, PaymentCreateIdempotencyRecord>();
 
+  private snapshot() {
+    return {
+      payments: new Map(this.payments),
+      paymentsByDelivery: new Map(this.paymentsByDelivery),
+      attempts: new Map(this.attempts),
+      refunds: new Map(this.refunds),
+      refundsByKey: new Map(this.refundsByKey),
+      ledger: new Map(this.ledger),
+    };
+  }
+
+  private restore(snapshot: ReturnType<InMemoryPaymentRepository["snapshot"]>) {
+    this.payments = snapshot.payments;
+    this.paymentsByDelivery = snapshot.paymentsByDelivery;
+    this.attempts = snapshot.attempts;
+    this.refunds = snapshot.refunds;
+    this.refundsByKey = snapshot.refundsByKey;
+    this.ledger = snapshot.ledger;
+  }
+
   async withTransaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    _options?: PaymentTransactionOptions,
   ): Promise<T> {
-    return fn({} as Prisma.TransactionClient);
+    const snap = this.snapshot();
+    try {
+      return await fn({} as Prisma.TransactionClient);
+    } catch (error) {
+      this.restore(snap);
+      throw error;
+    }
   }
 
   async findByDeliveryId(deliveryId: string): Promise<PaymentDto | null> {
@@ -32,7 +60,7 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     return id ? (this.payments.get(id) ?? null) : null;
   }
 
-  async findById(paymentId: string): Promise<PaymentDto | null> {
+  async findById(paymentId: string, _client?: unknown): Promise<PaymentDto | null> {
     return this.payments.get(paymentId) ?? null;
   }
 
@@ -52,7 +80,7 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     return list[0] ?? null;
   }
 
-  async findRefundById(refundId: string): Promise<RefundDto | null> {
+  async findRefundById(refundId: string, _client?: unknown): Promise<RefundDto | null> {
     return this.refunds.get(refundId) ?? null;
   }
 
@@ -61,8 +89,31 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     return id ? (this.refunds.get(id) ?? null) : null;
   }
 
-  async findLedgerByIdempotencyKey(key: string): Promise<LedgerEntryDto | null> {
+  async findRefundByGatewayRefundId(
+    gatewayRefundId: string,
+  ): Promise<RefundDto | null> {
+    for (const refund of this.refunds.values()) {
+      if (
+        refund.gatewayRefundId === gatewayRefundId ||
+        refund.gatewayRefundReference === gatewayRefundId
+      ) {
+        return refund;
+      }
+    }
+    return null;
+  }
+
+  async findLedgerByIdempotencyKey(
+    key: string,
+    _client?: unknown,
+  ): Promise<LedgerEntryDto | null> {
     return this.ledger.get(key) ?? null;
+  }
+
+  async sumSuccessfulRefundAmounts(paymentId: string): Promise<number> {
+    return [...this.refunds.values()]
+      .filter((r) => r.paymentId === paymentId && r.status === "SUCCESS")
+      .reduce((sum, r) => sum + r.amount, 0);
   }
 
   async sumActiveRefundAmounts(paymentId: string): Promise<number> {

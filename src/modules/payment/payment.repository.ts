@@ -173,15 +173,31 @@ export type PaymentCreateIdempotencyRecord = {
   responsePayload: PaymentCreateResponsePayload;
 };
 
+export type PaymentTransactionOptions = {
+  maxWait?: number;
+  timeout?: number;
+};
+
 export interface IPaymentRepository {
-  withTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>;
+  withTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: PaymentTransactionOptions,
+  ): Promise<T>;
   findByDeliveryId(deliveryId: string): Promise<PaymentDto | null>;
   findById(paymentId: string, client?: PaymentDbClient): Promise<PaymentDto | null>;
   findByGatewayOrderId(gatewayOrderId: string): Promise<PaymentDto | null>;
   findLatestAttempt(paymentId: string): Promise<PaymentAttemptDto | null>;
-  findRefundById(refundId: string): Promise<RefundDto | null>;
+  findRefundById(refundId: string, client?: PaymentDbClient): Promise<RefundDto | null>;
   findRefundByIdempotencyKey(key: string): Promise<RefundDto | null>;
-  findLedgerByIdempotencyKey(key: string): Promise<LedgerEntryDto | null>;
+  findRefundByGatewayRefundId(gatewayRefundId: string): Promise<RefundDto | null>;
+  findLedgerByIdempotencyKey(
+    key: string,
+    client?: PaymentDbClient,
+  ): Promise<LedgerEntryDto | null>;
+  sumSuccessfulRefundAmounts(
+    paymentId: string,
+    client?: PaymentDbClient,
+  ): Promise<number>;
   sumActiveRefundAmounts(paymentId: string): Promise<number>;
   findCreateIdempotency(
     customerId: string,
@@ -283,8 +299,14 @@ export class PrismaPaymentRepository implements IPaymentRepository {
     return client ?? getPrismaClient();
   }
 
-  withTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return getPrismaClient().$transaction(fn);
+  withTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: PaymentTransactionOptions,
+  ): Promise<T> {
+    return getPrismaClient().$transaction(fn, {
+      maxWait: options?.maxWait ?? 10_000,
+      timeout: options?.timeout ?? 10_000,
+    });
   }
 
   async findByDeliveryId(deliveryId: string): Promise<PaymentDto | null> {
@@ -315,8 +337,11 @@ export class PrismaPaymentRepository implements IPaymentRepository {
     return row ? mapAttempt(row) : null;
   }
 
-  async findRefundById(refundId: string): Promise<RefundDto | null> {
-    const row = await getPrismaClient().refund.findUnique({ where: { id: refundId } });
+  async findRefundById(
+    refundId: string,
+    client?: PaymentDbClient,
+  ): Promise<RefundDto | null> {
+    const row = await this.db(client).refund.findUnique({ where: { id: refundId } });
     return row ? mapRefund(row) : null;
   }
 
@@ -327,11 +352,36 @@ export class PrismaPaymentRepository implements IPaymentRepository {
     return row ? mapRefund(row) : null;
   }
 
-  async findLedgerByIdempotencyKey(key: string): Promise<LedgerEntryDto | null> {
-    const row = await getPrismaClient().ledgerEntry.findUnique({
+  async findRefundByGatewayRefundId(
+    gatewayRefundId: string,
+  ): Promise<RefundDto | null> {
+    const row = await getPrismaClient().refund.findFirst({
+      where: {
+        OR: [{ gatewayRefundId }, { gatewayRefundReference: gatewayRefundId }],
+      },
+    });
+    return row ? mapRefund(row) : null;
+  }
+
+  async findLedgerByIdempotencyKey(
+    key: string,
+    client?: PaymentDbClient,
+  ): Promise<LedgerEntryDto | null> {
+    const row = await this.db(client).ledgerEntry.findUnique({
       where: { idempotencyKey: key },
     });
     return row ? mapLedger(row) : null;
+  }
+
+  async sumSuccessfulRefundAmounts(
+    paymentId: string,
+    client?: PaymentDbClient,
+  ): Promise<number> {
+    const rows = await this.db(client).refund.findMany({
+      where: { paymentId, status: "SUCCESS" },
+      select: { amount: true },
+    });
+    return rows.reduce((sum, row) => sum + moneyToNumber(row.amount), 0);
   }
 
   async sumActiveRefundAmounts(paymentId: string): Promise<number> {

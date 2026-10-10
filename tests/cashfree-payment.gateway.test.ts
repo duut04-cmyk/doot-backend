@@ -41,10 +41,14 @@ describe("CashfreePaymentGateway", () => {
         order_id: string;
         order_amount: number;
         order_currency: string;
+        customer_details: { customer_phone?: string };
+        order_meta?: { return_url?: string };
       };
-      expect(body.order_id).toBe(`DOTT-${paymentId}`);
+      expect(body.customer_details.customer_phone).toBe("919876543210");
+      expect(body.order_id).toBe(`DOOT-${paymentId}`);
       expect(body.order_amount).toBe(250.75);
       expect(body.order_currency).toBe("INR");
+      expect(body.order_meta?.return_url).toContain("deliveryId=");
       return new Response(
         JSON.stringify({
           order_id: body.order_id,
@@ -57,9 +61,10 @@ describe("CashfreePaymentGateway", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const gateway = new CashfreePaymentGateway(fetchMock as typeof fetch);
+    const deliveryId = randomUUID();
     const result = await gateway.createPaymentOrder({
       paymentId,
-      deliveryId: randomUUID(),
+      deliveryId,
       amount: 250.75,
       currency: "INR",
       customerReference: "REF-1",
@@ -70,7 +75,7 @@ describe("CashfreePaymentGateway", () => {
       },
     });
 
-    expect(result.gatewayOrderId).toBe(`DOTT-${paymentId}`);
+    expect(result.gatewayOrderId).toBe(`DOOT-${paymentId}`);
     expect(result.paymentSessionId).toBe("session_abc");
   });
 
@@ -89,7 +94,7 @@ describe("CashfreePaymentGateway", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const gateway = new CashfreePaymentGateway(fetchMock as typeof fetch);
-    const status = await gateway.getPaymentStatus({ gatewayOrderId: "DOTT-1" });
+    const status = await gateway.getPaymentStatus({ gatewayOrderId: "DOOT-1" });
     expect(status.status).toBe("PAID");
     expect(status.gatewayPaymentId).toBe("cf-1");
   });
@@ -125,5 +130,62 @@ describe("CashfreePaymentGateway", () => {
         customerReference: "REF",
       }),
     ).rejects.toMatchObject({ code: "PAYMENT_GATEWAY_ERROR" });
+  });
+
+  it("creates refund against orders/{order_id}/refunds", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("https://sandbox.cashfree.com/pg/orders/DOOT-1/refunds");
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(String(init?.body)) as {
+        refund_id: string;
+        refund_amount: number;
+      };
+      expect(body.refund_id).toBe("merchantRefundAbc");
+      expect(body.refund_amount).toBe(40);
+      return new Response(
+        JSON.stringify({
+          refund_id: "merchantRefundAbc",
+          cf_refund_id: "cf-r-1",
+          refund_status: "PENDING",
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const gateway = new CashfreePaymentGateway(fetchMock as typeof fetch);
+    const result = await gateway.createRefund({
+      paymentId: randomUUID(),
+      gatewayOrderId: "DOOT-1",
+      amount: 40,
+      currency: "INR",
+      merchantRefundId: "merchantRefundAbc",
+      idempotencyKey: "idem-r-1",
+    });
+    expect(result.status).toBe("PENDING");
+    expect(result.gatewayRefundId).toBe("merchantRefundAbc");
+    expect(result.gatewayRefundReference).toBe("cf-r-1");
+  });
+
+  it("gets refund status", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toBe(
+        "https://sandbox.cashfree.com/pg/orders/DOOT-1/refunds/merchantRefundAbc",
+      );
+      return new Response(
+        JSON.stringify({
+          refund_id: "merchantRefundAbc",
+          cf_refund_id: "cf-r-1",
+          refund_status: "SUCCESS",
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const gateway = new CashfreePaymentGateway(fetchMock as typeof fetch);
+    const result = await gateway.getRefundStatus({
+      gatewayOrderId: "DOOT-1",
+      gatewayRefundId: "merchantRefundAbc",
+    });
+    expect(result.status).toBe("SUCCESS");
   });
 });

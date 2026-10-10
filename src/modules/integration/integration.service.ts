@@ -1,4 +1,10 @@
-import { env, getEmailFromAddress, isMsg91Configured } from "../../config/env.js";
+import {
+  env,
+  getEmailFromAddress,
+  isMsg91Configured,
+  canResolvePackagePhotoUrls,
+  isObjectStorageConfigured,
+} from "../../config/env.js";
 import { getPrismaClient } from "../../config/database.js";
 import type {
   IntegrationCategoryDto,
@@ -133,13 +139,19 @@ export class IntegrationService {
           }),
           item({
             id: "object-storage",
-            name: "Object storage",
-            description: "Package photo uploads and media storage.",
+            name: "Cloudflare R2",
+            description:
+              "Package photo storage (presign on customer Next.js server; optional read URLs on API).",
             category: "infrastructure",
-            status: "coming_soon",
+            status: canResolvePackagePhotoUrls() ? "connected" : "not_configured",
             usedBy: "Delivery package photos",
-            impact: "Photo uploads are not available yet.",
-            metadata: {},
+            impact:
+              "Configure R2 on the customer app for uploads; set R2_PUBLIC_BASE_URL for photo URLs in API responses.",
+            metadata: env.R2_PUBLIC_BASE_URL
+              ? { publicBase: "configured" }
+              : isObjectStorageConfigured()
+                ? { bucket: env.R2_BUCKET_NAME ?? "doot" }
+                : {},
             manageHref: null,
           }),
           item({

@@ -92,7 +92,8 @@ export class OrchestrationProviderEvaluationService {
       serviceability: null as NormalizedServiceabilityResult | null,
       availability: null as AvailabilityResult | null,
       quote: null as NormalizedQuote | null,
-      cancellationPolicy: null as ProviderEvaluationOutcome["signals"]["cancellationPolicy"],
+      cancellationPolicy:
+        null as ProviderEvaluationOutcome["signals"]["cancellationPolicy"],
       compatibility: {
         weightCompatible: true,
         dimensionsCompatible: true,
@@ -138,10 +139,12 @@ export class OrchestrationProviderEvaluationService {
         testHints,
       };
 
-      const quoteRequest = toQuoteRequest(delivery, { serviceCode: serviceCode ?? undefined });
+      const quoteRequest = toQuoteRequest(delivery, {
+        serviceCode: serviceCode ?? undefined,
+      });
       let probeCancellationPolicy:
-        | ProviderEvaluationOutcome["signals"]["cancellationPolicy"]
-        | undefined = undefined;
+        ProviderEvaluationOutcome["signals"]["cancellationPolicy"] | undefined =
+        undefined;
 
       if (
         isQuoteProbeAdapter(resolved.adapter) &&
@@ -155,40 +158,51 @@ export class OrchestrationProviderEvaluationService {
         baseSignals.providerMetadata = sanitizeMetadata(probe.providerMetadata);
         probeCancellationPolicy = probe.cancellationPolicy ?? null;
       } else {
-        if (resolved.adapter.supportsOperation("checkServiceability")) {
-          baseSignals.serviceability = await this.executor.execute({
-            providerCode: provider.code,
-            operation: "checkServiceability",
-            payload: toServiceabilityRequest(delivery),
-            requestId,
-            testHints,
-          });
-        }
+        const serviceabilityPromise = resolved.adapter.supportsOperation(
+          "checkServiceability",
+        )
+          ? this.executor.execute({
+              providerCode: provider.code,
+              operation: "checkServiceability",
+              payload: toServiceabilityRequest(delivery),
+              requestId,
+              testHints,
+            })
+          : Promise.resolve(null);
 
-        if (
+        const availabilityPromise =
           providerHasCapability(provider, "AVAILABILITY") &&
           resolved.adapter.supportsOperation("getAvailability")
-        ) {
-          baseSignals.availability = await this.executor.execute({
-            providerCode: provider.code,
-            operation: "getAvailability",
-            payload: toAvailabilityRequest(delivery, {
-              serviceCode: serviceCode ?? undefined,
-            }),
-            requestId,
-            testHints,
-          });
-        } else {
-          baseSignals.availability = defaultUnknownAvailability();
-        }
+            ? this.executor.execute({
+                providerCode: provider.code,
+                operation: "getAvailability",
+                payload: toAvailabilityRequest(delivery, {
+                  serviceCode: serviceCode ?? undefined,
+                }),
+                requestId,
+                testHints,
+              })
+            : Promise.resolve(defaultUnknownAvailability());
 
-        baseSignals.quote = await this.executor.execute({
+        const quotePromise = this.executor.execute({
           providerCode: provider.code,
           operation: "getQuote",
           payload: quoteRequest,
           requestId,
           testHints,
         });
+
+        const [serviceability, availability, quote] = await Promise.all([
+          serviceabilityPromise,
+          availabilityPromise,
+          quotePromise,
+        ]);
+
+        if (serviceability) {
+          baseSignals.serviceability = serviceability;
+        }
+        baseSignals.availability = availability ?? defaultUnknownAvailability();
+        baseSignals.quote = quote;
       }
 
       baseSignals.cancellationPolicy = await resolveCancellationPolicy({

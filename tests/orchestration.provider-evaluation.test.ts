@@ -16,7 +16,7 @@ import type { ProviderWithRelations } from "../src/modules/provider/provider.rep
 function sampleDelivery(): DeliveryDetailDto {
   return {
     id: randomUUID(),
-    reference: "DOTT-1001",
+    reference: "DOOT-1001",
     customerId: randomUUID(),
     status: "CREATED",
     pickup: {

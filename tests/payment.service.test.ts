@@ -37,7 +37,7 @@ describe("PaymentService", () => {
     return new PaymentService(paymentRepo, deliveryRepo, orchestrationRepo, "STUB");
   }
 
-  it("creates payment from orchestration quote", async () => {
+  it("creates payment from orchestration quote and STUB auto-settles to PAID", async () => {
     const service = buildService();
     const result = await service.createPaymentForDelivery({
       deliveryId,
@@ -47,12 +47,12 @@ describe("PaymentService", () => {
       requestHash: "hash",
     });
 
-    expect(result.data.payment.amount).toBeGreaterThan(0);
+    expect(result.data.payment.amount).toBe(194.7);
     expect(result.data.payment.currency).toBe("INR");
-    expect(result.data.payment.status).toBe("PENDING");
+    expect(result.data.payment.status).toBe("PAID");
   });
 
-  it("rejects duplicate active payment creation", async () => {
+  it("rejects duplicate active payment creation by returning existing", async () => {
     const service = buildService();
     await service.createPaymentForDelivery({
       deliveryId,
@@ -70,7 +70,7 @@ describe("PaymentService", () => {
       requestHash: "hash",
     });
 
-    expect(second.data.payment.status).toBe("PENDING");
+    expect(second.data.payment.status).toBe("PAID");
   });
 
   it("marks payment paid and creates one ledger entry idempotently", async () => {
@@ -84,6 +84,8 @@ describe("PaymentService", () => {
     });
     const payment = await paymentRepo.findByDeliveryId(deliveryId);
     expect(payment).toBeTruthy();
+    expect(payment?.status).toBe("PAID");
+    expect(paymentRepo.ledger.size).toBe(1);
 
     await service.markPaymentPaid({ paymentId: payment!.id });
     await service.markPaymentPaid({ paymentId: payment!.id });
@@ -106,7 +108,6 @@ describe("PaymentService", () => {
       requestHash: "hash",
     });
     const payment = await paymentRepo.findByDeliveryId(deliveryId);
-    await service.markPaymentPaid({ paymentId: payment!.id });
 
     await expect(
       service.requestRefund({
@@ -119,7 +120,35 @@ describe("PaymentService", () => {
     });
   });
 
-  it("supports partial and full refunds", async () => {
+  it("rejects refund when payment is unpaid", async () => {
+    const service = buildService();
+    const unpaid = await paymentRepo.createPayment({
+      deliveryId,
+      customerId,
+      amount: 100,
+      currency: "INR",
+      gateway: "STUB",
+      pricingSource: "ORCHESTRATION_QUOTE",
+    });
+    await paymentRepo.updatePaymentStatus({
+      paymentId: unpaid.id,
+      fromStatuses: ["CREATED"],
+      toStatus: "PENDING",
+      gatewayOrderId: `stub-${unpaid.id}`,
+    });
+
+    await expect(
+      service.requestRefund({
+        paymentId: unpaid.id,
+        amount: 10,
+        idempotencyKey: "refund-unpaid",
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.REFUND_NOT_ALLOWED,
+    });
+  });
+
+  it("supports partial and full refunds via STUB gateway", async () => {
     const service = buildService();
     await service.createPaymentForDelivery({
       deliveryId,
@@ -129,14 +158,13 @@ describe("PaymentService", () => {
       requestHash: "hash",
     });
     const payment = await paymentRepo.findByDeliveryId(deliveryId);
-    await service.markPaymentPaid({ paymentId: payment!.id });
 
     const partial = await service.requestRefund({
       paymentId: payment!.id,
       amount: 10,
       idempotencyKey: "partial-1",
     });
-    await service.markRefundSuccessful({ refundId: partial.id });
+    expect(partial.status).toBe("SUCCESS");
 
     const afterPartial = await paymentRepo.findById(payment!.id);
     expect(afterPartial?.status).toBe("PARTIALLY_REFUNDED");
@@ -147,7 +175,7 @@ describe("PaymentService", () => {
       amount: payment!.amount - 10,
       idempotencyKey: "partial-2",
     });
-    await service.markRefundSuccessful({ refundId: fullRemainder.id });
+    expect(fullRemainder.status).toBe("SUCCESS");
 
     const afterFull = await paymentRepo.findById(payment!.id);
     expect(afterFull?.status).toBe("REFUNDED");
@@ -176,18 +204,24 @@ describe("PaymentService", () => {
 
   it("rejects invalid payment transition FAILED → PAID", async () => {
     const service = buildService();
-    await service.createPaymentForDelivery({
+    const pending = await paymentRepo.createPayment({
       deliveryId,
-      userId: customerId,
-      role: "CUSTOMER",
-      requestId: randomUUID(),
-      requestHash: "hash",
+      customerId,
+      amount: 100,
+      currency: "INR",
+      gateway: "STUB",
+      pricingSource: "ORCHESTRATION_QUOTE",
     });
-    const payment = await paymentRepo.findByDeliveryId(deliveryId);
-    await service.markPaymentFailed({ paymentId: payment!.id });
+    await paymentRepo.updatePaymentStatus({
+      paymentId: pending.id,
+      fromStatuses: ["CREATED"],
+      toStatus: "PENDING",
+      gatewayOrderId: `stub-${pending.id}`,
+    });
+    await service.markPaymentFailed({ paymentId: pending.id });
 
     await expect(
-      service.markPaymentPaid({ paymentId: payment!.id }),
+      service.markPaymentPaid({ paymentId: pending.id }),
     ).rejects.toMatchObject({
       code: ErrorCodes.PAYMENT_INVALID_TRANSITION,
     });

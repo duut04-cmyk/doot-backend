@@ -71,6 +71,8 @@ export type DeliveryPackagePhotoDto = {
   storageProvider: string;
   mimeType: string | null;
   fileSizeBytes: number | null;
+  /** Resolved read URL when object storage is configured */
+  url?: string | null;
 };
 
 export type DeliveryPackageDto = {

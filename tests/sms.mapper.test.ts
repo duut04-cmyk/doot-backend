@@ -33,13 +33,13 @@ describe("buildOtpSmsTemplateVariables", () => {
     const result = buildOtpSmsTemplateVariables({
       eventType: "PICKUP",
       otp: "123456",
-      deliveryReference: "DOTT-2001",
+      deliveryReference: "DOOT-2001",
       driverAssignment: assignment(),
     });
 
     expect(result).toEqual({
       otp: "123456",
-      delivery_reference: "DOTT-2001",
+      delivery_reference: "DOOT-2001",
       driver_name: "Aman Singh",
       vehicle_type: "BIKE",
       vehicle_number: "PB10AB1234",
@@ -52,7 +52,7 @@ describe("buildOtpSmsTemplateVariables", () => {
     const result = buildOtpSmsTemplateVariables({
       eventType: "DELIVERY",
       otp: "654321",
-      deliveryReference: "DOTT-2002",
+      deliveryReference: "DOOT-2002",
       driverAssignment: assignment({ status: "UNKNOWN", driverName: null }),
     });
 
@@ -67,7 +67,7 @@ describe("buildOtpSmsTemplateVariables", () => {
     const result = buildOtpSmsTemplateVariables({
       eventType: "PICKUP",
       otp: "111111",
-      deliveryReference: "DOTT-2003",
+      deliveryReference: "DOOT-2003",
       driverAssignment: null,
     });
 

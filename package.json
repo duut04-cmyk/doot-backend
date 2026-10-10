@@ -29,6 +29,8 @@
     "cert:browser-gate": "tsx --tsconfig ../customer-platform/tsconfig.json scripts/customer-browser-gate-verification.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1143.0",
+    "@aws-sdk/s3-request-presigner": "^3.1143.0",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",

@@ -14,6 +14,11 @@ import {
   cancellationController,
   type CancellationController,
 } from "../cancellation/cancellation.controller.js";
+import {
+  devDeliverySimulateController,
+  type DevDeliverySimulateController,
+} from "../dev-delivery-simulate/dev-delivery-simulate.controller.js";
+import { isDevDeliverySimulateEnabled } from "../dev-delivery-simulate/dev-delivery-simulate.config.js";
 import { cancelDeliveryBodySchema } from "../cancellation/cancellation.schema.js";
 import {
   driverController,
@@ -39,13 +44,17 @@ export function createOperationalRouter(options?: {
   otpController?: OtpController;
   trackingController?: TrackingController;
   cancellationController?: CancellationController;
+  devDeliverySimulateController?: DevDeliverySimulateController;
   authenticateMiddleware?: AuthenticateMiddleware;
+  enableDevDeliverySimulate?: boolean;
 }): Router {
   const router = Router({ mergeParams: true });
   const driver = options?.driverController ?? driverController;
   const otp = options?.otpController ?? otpController;
   const tracking = options?.trackingController ?? trackingController;
   const cancellation = options?.cancellationController ?? cancellationController;
+  const devSimulate =
+    options?.devDeliverySimulateController ?? devDeliverySimulateController;
   const auth = options?.authenticateMiddleware ?? authenticate;
 
   router.get(
@@ -144,6 +153,17 @@ export function createOperationalRouter(options?: {
     validateRequest({ params: deliveryIdParamsSchema }),
     cancellation.getCancellation,
   );
+
+  const enableDevDeliverySimulate =
+    options?.enableDevDeliverySimulate ?? isDevDeliverySimulateEnabled();
+  if (enableDevDeliverySimulate) {
+    router.post(
+      "/:id/dev/advance",
+      auth,
+      validateRequest({ params: deliveryIdParamsSchema }),
+      devSimulate.advance,
+    );
+  }
 
   return router;
 }

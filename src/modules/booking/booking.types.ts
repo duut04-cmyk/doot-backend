@@ -1,10 +1,15 @@
 import type { ProviderBookingStatus } from "@prisma/client";
 
 export type QuoteSnapshot = {
+  /** Provider quote amount (excludes platform fee and GST). */
   amount: number;
   currency: string;
   providerQuoteId?: string | null;
   quotedAt?: string | null;
+  providerQuoteAmount?: number;
+  platformFeeAmount?: number;
+  gstAmount?: number;
+  customerPayableAmount?: number;
 };
 
 export type ProviderBookingDto = {
@@ -37,7 +42,6 @@ export type ProviderBookingDto = {
   createdAt: Date;
   updatedAt: Date;
 };
-
 
 export type CustomerBookingQuoteDto = {
   amount: number;
@@ -97,5 +101,4 @@ export type AdminConfirmResultDto = {
 };
 
 export type BookingConfirmResponsePayload =
-  | CustomerConfirmResultDto
-  | AdminConfirmResultDto;
+  CustomerConfirmResultDto | AdminConfirmResultDto;

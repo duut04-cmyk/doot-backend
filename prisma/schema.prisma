@@ -1136,13 +1136,17 @@ enum FeedbackIssueTag {
 }
 
 model DeliveryRating {
-  id             String   @id @default(uuid()) @db.Uuid
-  deliveryId     String   @unique @db.Uuid
-  customerId     String   @db.Uuid
-  driverRating   Int
-  deliveryRating Int
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                        String   @id @default(uuid()) @db.Uuid
+  deliveryId                String   @unique @db.Uuid
+  customerId                String   @db.Uuid
+  driverRating              Int
+  platformRating            Int?
+  deliveryRating            Int
+  timelinessRating          Int?
+  packageHandlingRating     Int?
+  servicePresentationRating Int?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   customer User     @relation(fields: [customerId], references: [id], onDelete: Restrict)

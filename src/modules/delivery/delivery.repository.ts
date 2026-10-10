@@ -27,8 +27,7 @@ import type { DeliveryDetailDto, NormalizedCreateDelivery } from "./delivery.typ
 import { decimalToNumber } from "./delivery.types.js";
 
 export type AuthDbClient =
-  | Prisma.TransactionClient
-  | ReturnType<typeof getPrismaClient>;
+  Prisma.TransactionClient | ReturnType<typeof getPrismaClient>;
 
 export type DeliveryWithRelations = Delivery & {
   pickup: DeliveryPickup;
@@ -54,6 +53,7 @@ export type IdempotencyRecord = {
 
 export type DeliveryListFilters = {
   status?: DeliveryStatus;
+  statusIn?: DeliveryStatus[];
   from?: Date;
   to?: Date;
   reference?: string;
@@ -83,10 +83,7 @@ export interface IDeliveryRepository {
     filters?: DeliveryListFilters,
   ): Promise<{ items: DeliveryWithRelations[]; total: number }>;
   findStatusEvents(deliveryId: string): Promise<DeliveryStatusEvent[]>;
-  findIdempotency(
-    customerId: string,
-    key: string,
-  ): Promise<IdempotencyRecord | null>;
+  findIdempotency(customerId: string, key: string): Promise<IdempotencyRecord | null>;
   saveIdempotency(
     input: {
       customerId: string;
@@ -128,7 +125,9 @@ function buildListWhere(
   }
 
   const where: Prisma.DeliveryWhereInput = { ...base };
-  if (filters.status) {
+  if (filters.statusIn && filters.statusIn.length > 0) {
+    where.status = { in: filters.statusIn };
+  } else if (filters.status) {
     where.status = filters.status;
   }
   if (filters.from || filters.to) {
@@ -179,9 +178,7 @@ export function toDeliveryDetailDto(
       )!,
       instructions: delivery.drop.instructions,
       latitude:
-        delivery.drop.latitude == null
-          ? null
-          : decimalToNumber(delivery.drop.latitude),
+        delivery.drop.latitude == null ? null : decimalToNumber(delivery.drop.latitude),
       longitude:
         delivery.drop.longitude == null
           ? null

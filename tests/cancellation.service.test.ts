@@ -12,6 +12,7 @@ import {
   seedOrchestratingDelivery,
 } from "./helpers/cancellation-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
@@ -27,6 +28,7 @@ describe("CancellationService", () => {
   let bookingRepo: InMemoryBookingRepository;
   let providerRepo: InMemoryProviderRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let cancellationRepo: InMemoryCancellationRepository;
   let executeMock: ReturnType<typeof vi.fn>;
   let service: CancellationService;
@@ -39,6 +41,7 @@ describe("CancellationService", () => {
     bookingRepo = new InMemoryBookingRepository();
     providerRepo = new InMemoryProviderRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     cancellationRepo = new InMemoryCancellationRepository();
     executeMock = vi.fn();
     service = new CancellationService(
@@ -48,6 +51,7 @@ describe("CancellationService", () => {
       cancellationRepo,
       new DeliveryLifecycleService(deliveryRepo),
       { execute: executeMock } as unknown as ProviderAdapterExecutor,
+      paymentRepo,
     );
   });
 

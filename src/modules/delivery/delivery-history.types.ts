@@ -41,6 +41,7 @@ export type DeliveryHistoryDetail = {
       storageProvider: string;
       mimeType: string | null;
       fileSizeBytes: number | null;
+      url?: string | null;
     }>;
   };
   schedule: {
@@ -116,7 +117,11 @@ export type DeliveryHistoryDetail = {
   };
   rating: {
     driverRating: number;
+    platformRating: number | null;
     deliveryRating: number;
+    timelinessRating: number | null;
+    packageHandlingRating: number | null;
+    servicePresentationRating: number | null;
     submittedAt: string;
   } | null;
   feedback: {

@@ -28,6 +28,13 @@ export type CancellationResponsePayload = {
     reasonCode: string;
     cancelledAt: string | null;
   };
+  refund?: {
+    refundId: string;
+    status: string;
+    amount: number;
+    currency: string;
+    failureMessage?: string | null;
+  } | null;
 };
 
 function mapRow(row: {
@@ -53,9 +60,7 @@ function mapRow(row: {
 
 export interface ICancellationRepository {
   getNextAttemptNumber(deliveryId: string): Promise<number>;
-  findLatestByDeliveryId(
-    deliveryId: string,
-  ): Promise<DeliveryCancellationDto | null>;
+  findLatestByDeliveryId(deliveryId: string): Promise<DeliveryCancellationDto | null>;
   findProcessingByDeliveryId(
     deliveryId: string,
   ): Promise<DeliveryCancellationDto | null>;

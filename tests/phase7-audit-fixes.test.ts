@@ -20,6 +20,7 @@ import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { seedCustomerUser } from "./helpers/otp-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
@@ -35,6 +36,7 @@ describe("Phase 7 audit fixes", () => {
   let bookingRepo: InMemoryBookingRepository;
   let driverRepo: InMemoryDriverRepository;
   let trackingRepo: InMemoryTrackingRepository;
+  let paymentRepo: InMemoryPaymentRepository;
   let cancellationRepo: InMemoryCancellationRepository;
   let orchestrationRepo: InMemoryOrchestrationRepository;
   let providerRepo: InMemoryProviderRepository;
@@ -46,6 +48,7 @@ describe("Phase 7 audit fixes", () => {
     bookingRepo = new InMemoryBookingRepository();
     driverRepo = new InMemoryDriverRepository();
     trackingRepo = new InMemoryTrackingRepository();
+    paymentRepo = new InMemoryPaymentRepository();
     cancellationRepo = new InMemoryCancellationRepository();
     orchestrationRepo = new InMemoryOrchestrationRepository();
     providerRepo = new InMemoryProviderRepository();
@@ -203,6 +206,7 @@ describe("Phase 7 audit fixes", () => {
       cancellationRepo,
       new DeliveryLifecycleService(deliveryRepo),
       { execute: executeMock } as unknown as ProviderAdapterExecutor,
+      paymentRepo,
     );
 
     await expect(

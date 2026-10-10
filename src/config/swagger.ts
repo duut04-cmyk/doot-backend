@@ -13,6 +13,7 @@ import {
 } from "../modules/delivery/delivery.swagger.js";
 import { bookingSwaggerPaths } from "../modules/booking/booking.swagger.js";
 import { paymentSwaggerPaths } from "../modules/payment/payment.swagger.js";
+import { experienceSwaggerPaths } from "../modules/experience/experience.swagger.js";
 import { feedbackSwaggerPaths } from "../modules/feedback/feedback.swagger.js";
 import {
   driverSimulationSwaggerPaths,
@@ -114,6 +115,7 @@ export function buildOpenApiDocument() {
       ...(env.NODE_ENV !== "production" ? testSmsSwaggerPaths : {}),
       ...ratingSwaggerPaths,
       ...feedbackSwaggerPaths,
+      ...experienceSwaggerPaths,
       ...providerSwaggerPaths,
       ...customerSwaggerPaths,
       ...integrationSwaggerPaths,

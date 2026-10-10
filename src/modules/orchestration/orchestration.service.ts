@@ -1,4 +1,5 @@
 import type { UserRole } from "@prisma/client";
+import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
@@ -16,7 +17,10 @@ import {
   ORCHESTRATION_BLOCKED_STATUSES,
   ORCHESTRATION_RETRYABLE_STATUSES,
 } from "./orchestration.constants.js";
-import { isProviderOrchestrationCandidate } from "./orchestration.eligibility.js";
+import {
+  isProviderOrchestrationCandidate,
+  resolvePrimaryService,
+} from "./orchestration.eligibility.js";
 import { mapOrchestrationResponse } from "./orchestration.mapper.js";
 import {
   OrchestrationProviderEvaluationService,
@@ -26,6 +30,7 @@ import {
   orchestrationRepository,
   type IOrchestrationRepository,
 } from "./orchestration.repository.js";
+import { enrichQuoteSnapshotWithCustomerPricing } from "../pricing/customer-delivery-pricing.js";
 import {
   buildSelectionReason,
   compareScoredEvaluations,
@@ -33,11 +38,20 @@ import {
   type ScorableEvaluation,
 } from "./orchestration.scoring.js";
 import { toCancellationPolicySnapshot } from "../provider/contracts/cancellation-policy.js";
+import type { ProviderWithRelations } from "../provider/provider.repository.js";
 import type {
   CreateOrchestrationEvaluationInput,
   OrchestrationRequestDto,
   ProviderEvaluationOutcome,
 } from "./orchestration.types.js";
+
+const orchestrationProviderDeadlineMarker = Symbol("orchestrationProviderDeadline");
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 export class OrchestrationService {
   constructor(
@@ -45,6 +59,8 @@ export class OrchestrationService {
     private readonly providerRepo: IProviderRepository = providerRepository,
     private readonly orchestrationRepo: IOrchestrationRepository = orchestrationRepository,
     private readonly providerEvaluation: OrchestrationProviderEvaluationService = orchestrationProviderEvaluationService,
+    private readonly orchestrationMaxDurationMs: number = env.ORCHESTRATION_MAX_DURATION_MS ??
+      15_000,
   ) {}
 
   async orchestrate(input: {
@@ -62,15 +78,7 @@ export class OrchestrationService {
     const delivery = toDeliveryDetailDto(deliveryRecord);
 
     if (delivery.status === "OPTION_READY") {
-      const existing = await this.orchestrationRepo.findLatestCompletedByDeliveryId(
-        input.deliveryId,
-      );
-      if (!existing) {
-        throw new AppError("Orchestration result not found.", {
-          statusCode: 404,
-          code: ErrorCodes.ORCHESTRATION_NOT_FOUND,
-        });
-      }
+      const existing = await this.resolveBookableOrchestrationRequest(input.deliveryId);
       return {
         success: true as const,
         data: mapOrchestrationResponse(
@@ -177,24 +185,59 @@ export class OrchestrationService {
       input.userId,
       input.role,
     );
-    const request = await this.orchestrationRepo.findLatestByDeliveryId(
+    const delivery = toDeliveryDetailDto(deliveryRecord);
+    const request = await this.resolveOrchestrationRequestForRead(
       input.deliveryId,
+      delivery.status,
     );
-    if (!request) {
-      throw new AppError("Orchestration result not found.", {
-        statusCode: 404,
-        code: ErrorCodes.ORCHESTRATION_NOT_FOUND,
-      });
-    }
     return {
       success: true as const,
       data: mapOrchestrationResponse(
         input.role,
         deliveryRecord.id,
-        deliveryRecord.status,
+        delivery.status,
         request,
       ),
     };
+  }
+
+  /** Latest COMPLETED orchestration that includes a selected provider option. */
+  private async resolveBookableOrchestrationRequest(deliveryId: string) {
+    const completed =
+      await this.orchestrationRepo.findLatestCompletedByDeliveryId(deliveryId);
+    if (!completed?.selectedOption) {
+      throw new AppError("Orchestration result not found.", {
+        statusCode: 404,
+        code: ErrorCodes.ORCHESTRATION_NOT_FOUND,
+      });
+    }
+    return completed;
+  }
+
+  /**
+   * Avoid mixing delivery OPTION_READY with a newer RUNNING attempt (empty selectedOption).
+   */
+  private async resolveOrchestrationRequestForRead(
+    deliveryId: string,
+    deliveryStatus: string,
+  ) {
+    if (deliveryStatus === "OPTION_READY") {
+      return this.resolveBookableOrchestrationRequest(deliveryId);
+    }
+
+    const running = await this.orchestrationRepo.findRunningByDeliveryId(deliveryId);
+    if (running) {
+      return running;
+    }
+
+    const latest = await this.orchestrationRepo.findLatestByDeliveryId(deliveryId);
+    if (!latest) {
+      throw new AppError("Orchestration result not found.", {
+        statusCode: 404,
+        code: ErrorCodes.ORCHESTRATION_NOT_FOUND,
+      });
+    }
+    return latest;
   }
 
   private async runOrchestration(input: {
@@ -204,17 +247,27 @@ export class OrchestrationService {
     requestId: string;
     testHints?: AdapterExecutionContext["testHints"];
   }) {
-    const providers = (await this.providerRepo.listProviders())
+    let providers = (await this.providerRepo.listProviders())
       .filter(isProviderOrchestrationCandidate)
       .sort((a, b) => a.priority - b.priority);
 
+    if (env.ORCHESTRATION_MOCK_ONLY && env.NODE_ENV !== "production") {
+      const mockOnly = providers.filter((provider) => provider.code === "MOCK");
+      if (mockOnly.length > 0) {
+        providers = mockOnly;
+      }
+    }
+
+    const orchestrationDeadlineAt = Date.now() + this.orchestrationMaxDurationMs;
+
     const settled = await Promise.allSettled(
       providers.map((provider) =>
-        this.providerEvaluation.evaluateProvider({
+        this.evaluateProviderWithinOrchestrationBudget({
           provider,
           delivery: input.delivery,
           requestId: input.requestId,
           testHints: input.testHints,
+          deadlineAt: orchestrationDeadlineAt,
         }),
       ),
     );
@@ -283,9 +336,7 @@ export class OrchestrationService {
 
     for (const evaluation of evaluationInputs) {
       const scoredMatch = winner
-        ? scored.find(
-            (item) => item.providerId === evaluation.providerId,
-          )
+        ? scored.find((item) => item.providerId === evaluation.providerId)
         : null;
       if (scoredMatch) {
         evaluation.score = scoredMatch.score;
@@ -320,19 +371,19 @@ export class OrchestrationService {
               score: winner.score,
               scoreBreakdown: winner.scoreBreakdown,
               selectionReason,
-              quoteSnapshot: {
+              quoteSnapshot: enrichQuoteSnapshotWithCustomerPricing({
                 amount: winnerEvaluation.quoteAmount,
                 currency: winnerEvaluation.quoteCurrency ?? "INR",
-                providerQuoteId:
-                  winner.quote.providerQuoteId ?? null,
-              },
-              availabilitySnapshot: winnerEvaluation.availabilityKnown == null
-                ? null
-                : {
-                    known: winnerEvaluation.availabilityKnown,
-                    available: winnerEvaluation.available,
-                    availableDriverCount: winnerEvaluation.availableDriverCount,
-                  },
+                providerQuoteId: winner.quote.providerQuoteId ?? null,
+              }),
+              availabilitySnapshot:
+                winnerEvaluation.availabilityKnown == null
+                  ? null
+                  : {
+                      known: winnerEvaluation.availabilityKnown,
+                      available: winnerEvaluation.available,
+                      availableDriverCount: winnerEvaluation.availableDriverCount,
+                    },
               etaSnapshot: winnerEvaluation.estimatedDeliveryAt
                 ? {
                     estimatedDeliveryAt:
@@ -340,8 +391,7 @@ export class OrchestrationService {
                   }
                 : winner.quote.estimatedDeliveryMinutes != null
                   ? {
-                      estimatedDeliveryMinutes:
-                        winner.quote.estimatedDeliveryMinutes,
+                      estimatedDeliveryMinutes: winner.quote.estimatedDeliveryMinutes,
                     }
                   : null,
               cancellationPolicySnapshot: (() => {
@@ -349,9 +399,7 @@ export class OrchestrationService {
                   (item) => item.signals.providerId === winner.providerId,
                 );
                 const policy = winnerOutcome?.signals.cancellationPolicy;
-                return policy
-                  ? toCancellationPolicySnapshot(policy)
-                  : null;
+                return policy ? toCancellationPolicySnapshot(policy) : null;
               })(),
             },
             tx,
@@ -429,6 +477,69 @@ export class OrchestrationService {
         request: refreshed,
       };
     });
+  }
+
+  private async evaluateProviderWithinOrchestrationBudget(input: {
+    provider: ProviderWithRelations;
+    delivery: ReturnType<typeof toDeliveryDetailDto>;
+    requestId: string;
+    testHints?: AdapterExecutionContext["testHints"];
+    deadlineAt: number;
+  }): Promise<ProviderEvaluationOutcome> {
+    const remainingMs = input.deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      return this.buildOrchestrationTimeoutOutcome(input.provider);
+    }
+
+    const evaluationPromise = this.providerEvaluation.evaluateProvider({
+      provider: input.provider,
+      delivery: input.delivery,
+      requestId: input.requestId,
+      testHints: input.testHints,
+    });
+
+    const raced = await Promise.race([
+      evaluationPromise,
+      sleep(remainingMs).then(() => orchestrationProviderDeadlineMarker),
+    ]);
+
+    if (raced === orchestrationProviderDeadlineMarker) {
+      return this.buildOrchestrationTimeoutOutcome(input.provider);
+    }
+
+    return raced as ProviderEvaluationOutcome;
+  }
+
+  private buildOrchestrationTimeoutOutcome(
+    provider: ProviderWithRelations,
+  ): ProviderEvaluationOutcome {
+    const { serviceId, serviceCode } = resolvePrimaryService(provider);
+    return {
+      status: "ERROR",
+      signals: {
+        providerId: provider.id,
+        providerCode: provider.code,
+        providerServiceId: serviceId,
+        providerServiceCode: serviceCode,
+        serviceability: null,
+        availability: null,
+        quote: null,
+        cancellationPolicy: null,
+        compatibility: {
+          weightCompatible: true,
+          dimensionsCompatible: true,
+          requirementsCompatible: true,
+          scheduleCompatible: true,
+        },
+        warnings: [],
+        providerMetadata: {},
+      },
+      exclusionReasons: [],
+      eligibilityReasons: [],
+      errorCategory: "PROVIDER_TIMEOUT",
+      score: null,
+      scoreBreakdown: null,
+    };
   }
 
   private toEvaluationInput(

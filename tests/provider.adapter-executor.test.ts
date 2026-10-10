@@ -15,7 +15,7 @@ import { phoneValue } from "./helpers/phone-test-helpers.js";
 
 const sampleDelivery: DeliveryDetailDto = {
   id: "22222222-2222-2222-2222-222222222222",
-  reference: "DOTT-3000",
+  reference: "DOOT-3000",
   status: "CREATED",
   pickup: {
     addressText: "A",
