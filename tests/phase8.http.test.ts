@@ -9,10 +9,8 @@ import { createDeliveryRouter } from "../src/modules/delivery/delivery.routes.js
 import { DeliveryController } from "../src/modules/delivery/delivery.controller.js";
 import { DeliveryService } from "../src/modules/delivery/delivery.service.js";
 import { DeliveryHistoryService } from "../src/modules/delivery/delivery-history.service.js";
-import { FeedbackController } from "../src/modules/feedback/feedback.controller.js";
-import { FeedbackService } from "../src/modules/feedback/feedback.service.js";
-import { RatingController } from "../src/modules/rating/rating.controller.js";
-import { RatingService } from "../src/modules/rating/rating.service.js";
+import { ExperienceController } from "../src/modules/experience/experience.controller.js";
+import { ExperienceService } from "../src/modules/experience/experience.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
@@ -26,6 +24,16 @@ import { InMemoryProviderRepository } from "./helpers/in-memory-provider-reposit
 import { InMemoryRatingRepository } from "./helpers/in-memory-rating-repository.js";
 import { InMemoryTrackingRepository } from "./helpers/in-memory-tracking-repository.js";
 import { seedDeliveredDelivery } from "./helpers/operational-test-helpers.js";
+
+const experienceBody = {
+  driverRating: 5,
+  platformRating: 5,
+  deliveryRating: 4,
+  timelinessRating: 5,
+  packageHandlingRating: 5,
+  servicePresentationRating: 4,
+  comment: "Phase 8 HTTP experience",
+};
 
 describe("Phase 8 HTTP", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -95,11 +103,8 @@ describe("Phase 8 HTTP", () => {
     app.use(
       "/api/v1/deliveries",
       createDeliveryRouter(deliveryController, undefined, undefined, {
-        ratingController: new RatingController(
-          new RatingService(deliveryRepo, ratingRepo),
-        ),
-        feedbackController: new FeedbackController(
-          new FeedbackService(deliveryRepo, feedbackRepo),
+        experienceController: new ExperienceController(
+          new ExperienceService(deliveryRepo, ratingRepo, feedbackRepo),
         ),
         authenticateMiddleware: authenticate,
       }),
@@ -139,15 +144,15 @@ describe("Phase 8 HTTP", () => {
     return app;
   }
 
-  it("rejects unauthenticated rating", async () => {
+  it("rejects unauthenticated experience submit", async () => {
     const app = buildCustomerApp();
     const response = await request(app)
-      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/rating")
-      .send({ driverRating: 5, deliveryRating: 5 });
+      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/experience")
+      .send(experienceBody);
     expect(response.status).toBe(401);
   });
 
-  it("submits and reads rating over HTTP", async () => {
+  it("submits experience and exposes rating in history", async () => {
     const seeded = await seedDeliveredDelivery({
       deliveryRepo,
       orchestrationRepo: new InMemoryOrchestrationRepository(),
@@ -157,40 +162,18 @@ describe("Phase 8 HTTP", () => {
     });
     const app = buildCustomerApp();
     const create = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/rating`)
+      .post(`/api/v1/deliveries/${seeded.deliveryId}/experience`)
       .set("Authorization", `Bearer ${customerToken}`)
-      .send({ driverRating: 5, deliveryRating: 4 });
+      .send(experienceBody);
     expect(create.status).toBe(201);
+    expect(create.body.data.rating.driverRating).toBe(5);
 
-    const read = await request(app)
-      .get(`/api/v1/deliveries/${seeded.deliveryId}/rating`)
+    const history = await request(app)
+      .get(`/api/v1/deliveries/${seeded.deliveryId}/history`)
       .set("Authorization", `Bearer ${customerToken}`);
-    expect(read.status).toBe(200);
-    expect(read.body.data.driverRating).toBe(5);
-  });
-
-  it("rejects unauthenticated feedback", async () => {
-    const app = buildCustomerApp();
-    const response = await request(app)
-      .post("/api/v1/deliveries/00000000-0000-4000-8000-000000000001/feedback")
-      .send({ positiveTags: ["FAST_DELIVERY"] });
-    expect(response.status).toBe(401);
-  });
-
-  it("submits feedback over HTTP", async () => {
-    const seeded = await seedDeliveredDelivery({
-      deliveryRepo,
-      orchestrationRepo: new InMemoryOrchestrationRepository(),
-      providerRepo: new InMemoryProviderRepository(),
-      bookingRepo: new InMemoryBookingRepository(),
-      customerId,
-    });
-    const app = buildCustomerApp();
-    const response = await request(app)
-      .post(`/api/v1/deliveries/${seeded.deliveryId}/feedback`)
-      .set("Authorization", `Bearer ${customerToken}`)
-      .send({ positiveTags: ["FAST_DELIVERY"], issueTags: [] });
-    expect(response.status).toBe(201);
+    expect(history.status).toBe(200);
+    expect(history.body.data.rating.driverRating).toBe(5);
+    expect(history.body.data.feedback.comment).toBe(experienceBody.comment);
   });
 
   it("rejects customer access to another customer history", async () => {

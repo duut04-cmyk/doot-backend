@@ -342,15 +342,12 @@ BOOKED → DRIVER_ASSIGNED → PICKUP_OTP_PENDING → PICKED_UP → IN_TRANSIT �
 - Provider webhooks link deliveries via `ProviderBooking.providerOrderId` and update driver/tracking operationally
 - Terminal statuses ignore stale webhook/tracking transitions
 
-### Rating, feedback, historical delivery (Phase 8)
+### Experience survey, historical delivery (Phase 8)
 
 Customer endpoints:
 
 ```text
-POST /api/v1/deliveries/:deliveryId/rating
-GET  /api/v1/deliveries/:deliveryId/rating
-POST /api/v1/deliveries/:deliveryId/feedback
-GET  /api/v1/deliveries/:deliveryId/feedback
+POST /api/v1/deliveries/:deliveryId/experience
 GET  /api/v1/deliveries/:deliveryId/history
 GET  /api/v1/deliveries?page&limit&status&from&to&reference
 ```
@@ -361,8 +358,8 @@ Admin endpoints:
 GET /api/v1/admin/deliveries/:deliveryId/history
 ```
 
-- Customer ratings (driver + delivery, 1–5) and feedback are immutable, one per delivery
-- Rating/feedback allowed only when `Delivery.status = DELIVERED`
+- Customer experience (multi-dimension ratings + optional comment) is immutable, one per delivery
+- Experience submit allowed only when `Delivery.status = DELIVERED`
 - Historical detail composes existing domain records (no duplicate delivery table)
 - OTP metadata exposed without plaintext/hash; provider credentials never returned
 - **Payment (Phase 1):** provider-neutral domain — see [docs/payment-domain-phase-1.md](./docs/payment-domain-phase-1.md). Cashfree gateway integration is **next phase**. No customer wallet.

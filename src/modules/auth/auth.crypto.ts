@@ -46,10 +46,7 @@ export async function hashOtp(otp: string): Promise<string> {
   return bcrypt.hash(otp, bcryptRounds());
 }
 
-export async function verifyOtpHash(
-  otp: string,
-  otpHash: string,
-): Promise<boolean> {
+export async function verifyOtpHash(otp: string, otpHash: string): Promise<boolean> {
   return bcrypt.compare(otp, otpHash);
 }
 
@@ -58,9 +55,7 @@ export function getAccessTokenExpiresIn(): string {
 }
 
 export function getRefreshTokenExpiresInDays(): number {
-  return (
-    env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? DEFAULT_REFRESH_TOKEN_EXPIRES_IN_DAYS
-  );
+  return env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? DEFAULT_REFRESH_TOKEN_EXPIRES_IN_DAYS;
 }
 
 /** Convert values like `15m`, `1h`, `7d`, or bare seconds into seconds. */
@@ -163,10 +158,7 @@ export function hashRefreshToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
-export function verifyRefreshToken(
-  rawToken: string,
-  tokenHash: string,
-): boolean {
+export function verifyRefreshToken(rawToken: string, tokenHash: string): boolean {
   const computed = Buffer.from(hashRefreshToken(rawToken), "utf8");
   const stored = Buffer.from(tokenHash, "utf8");
   if (computed.length !== stored.length) {
@@ -191,11 +183,6 @@ export function hashOpaqueToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
-/** @deprecated Use hashOpaqueToken */
-export function hashPasswordResetToken(rawToken: string): string {
-  return hashOpaqueToken(rawToken);
-}
-
 export function getPasswordResetVerificationTokenExpirySeconds(): number {
   return (
     env.PASSWORD_RESET_VERIFICATION_TOKEN_EXPIRY_SECONDS ??
@@ -207,7 +194,6 @@ export function buildPasswordResetVerificationTokenExpiry(
   from: Date = new Date(),
 ): Date {
   return new Date(
-    from.getTime() +
-      getPasswordResetVerificationTokenExpirySeconds() * 1000,
+    from.getTime() + getPasswordResetVerificationTokenExpirySeconds() * 1000,
   );
 }

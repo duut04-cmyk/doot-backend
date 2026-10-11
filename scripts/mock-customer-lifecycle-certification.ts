@@ -388,35 +388,29 @@ async function main() {
       verifyDelivery.res.ok && deliveredStatus === "DELIVERED",
     );
 
-    // 14. RATING
-    const rating = await api(`/deliveries/${deliveryId}/rating`, {
+    // 14. EXPERIENCE (ratings + feedback)
+    const experience = await api(`/deliveries/${deliveryId}/experience`, {
       method: "POST",
       token: customerToken,
-      body: { driverRating: 5, deliveryRating: 5 },
+      body: {
+        driverRating: 5,
+        platformRating: 5,
+        deliveryRating: 5,
+        timelinessRating: 5,
+        packageHandlingRating: 5,
+        servicePresentationRating: 5,
+        comment: "MOCK lifecycle certification — smooth delivery.",
+      },
     });
     record(
-      "RATING",
-      "POST /deliveries/:id/rating",
-      rating.res,
-      rating.json,
-      rating.res.ok,
+      "EXPERIENCE",
+      "POST /deliveries/:id/experience",
+      experience.res,
+      experience.json,
+      experience.res.ok,
     );
 
-    // 15. FEEDBACK
-    const feedback = await api(`/deliveries/${deliveryId}/feedback`, {
-      method: "POST",
-      token: customerToken,
-      body: { comment: "MOCK lifecycle certification — smooth delivery." },
-    });
-    record(
-      "FEEDBACK",
-      "POST /deliveries/:id/feedback",
-      feedback.res,
-      feedback.json,
-      feedback.res.ok,
-    );
-
-    // 16. HISTORY
+    // 15. HISTORY
     const history = await api(`/deliveries/${deliveryId}/history`, {
       token: customerToken,
     });

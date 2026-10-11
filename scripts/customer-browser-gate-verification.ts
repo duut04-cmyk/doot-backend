@@ -432,33 +432,30 @@ async function main() {
     fail("Delivered persistence", history?.delivery.status ?? "unknown");
   }
 
-  const ratingRes = await api(`/deliveries/${deliveryId}/rating`, {
+  const experienceRes = await api(`/deliveries/${deliveryId}/experience`, {
     method: "POST",
     token,
-    body: { driverRating: 5, deliveryRating: 5 },
+    body: {
+      driverRating: 5,
+      platformRating: 5,
+      deliveryRating: 5,
+      timelinessRating: 5,
+      packageHandlingRating: 5,
+      servicePresentationRating: 5,
+      comment: "Browser gate verification feedback",
+    },
   });
-  if (ratingRes.res.ok) {
-    pass("Rating", "submitted");
+  if (experienceRes.res.ok) {
+    pass("Experience", "submitted");
   } else {
-    fail("Rating", `HTTP ${ratingRes.res.status}`);
-  }
-
-  const feedbackRes = await api(`/deliveries/${deliveryId}/feedback`, {
-    method: "POST",
-    token,
-    body: { comment: "Browser gate verification feedback" },
-  });
-  if (feedbackRes.res.ok) {
-    pass("Feedback", "submitted");
-  } else {
-    fail("Feedback", `HTTP ${feedbackRes.res.status}`);
+    fail("Experience", `HTTP ${experienceRes.res.status}`);
   }
 
   history = await fetchHistory(token, deliveryId);
   if (history?.rating?.driverRating && history?.feedback?.comment) {
-    pass("Rating/feedback persistence", "reload OK");
+    pass("Experience persistence", "reload OK");
   } else {
-    fail("Rating/feedback persistence", "missing after reload");
+    fail("Experience persistence", "missing after reload");
   }
 
   const cancelCreated = await api("/deliveries", {
