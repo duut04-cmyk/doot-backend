@@ -18,7 +18,7 @@ import { createOperationalServices } from "./helpers/operational-refresh-test-he
 import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import { GENERIC_OTP_ERROR } from "../src/modules/otp/otp.constants.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
-import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
+import { createOtpTestSmsSender } from "./helpers/sms-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
@@ -90,8 +90,8 @@ describe("Operational HTTP", () => {
         deliveryRepo,
         otpRepo,
         lifecycle,
-        authRepo,
-        createNoopEmailSender(),
+        createOtpTestSmsSender(),
+        driverRepo,
       ),
     );
     const trackingController = new TrackingController(trackingService);

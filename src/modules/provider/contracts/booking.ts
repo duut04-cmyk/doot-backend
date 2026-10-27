@@ -7,6 +7,7 @@ export const bookingOutcomeSchema = z.enum(["BOOKED", "FAILED", "UNKNOWN"]);
 export const bookingRequestSchema = quoteRequestSchema.extend({
   providerQuoteId: z.string().nullable().optional(),
   idempotencyKey: z.string().min(1).optional(),
+  providerMetadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const bookingServiceInfoSchema = z.object({

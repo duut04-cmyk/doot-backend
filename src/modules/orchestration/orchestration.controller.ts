@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
-import type { OrchestrationDeliveryParams } from "./orchestration.schema.js";
+import type {
+  ListOrchestrationsQuery,
+  OrchestrationDeliveryParams,
+  OrchestrationRequestIdParams,
+} from "./orchestration.schema.js";
 import {
   orchestrationService,
   type OrchestrationService,
@@ -18,9 +22,7 @@ function requireUser(req: Request) {
 }
 
 export class OrchestrationController {
-  constructor(
-    private readonly service: OrchestrationService = orchestrationService,
-  ) {}
+  constructor(private readonly service: OrchestrationService = orchestrationService) {}
 
   orchestrate = async (
     req: Request,
@@ -55,6 +57,38 @@ export class OrchestrationController {
         userId: user.id,
         role: user.role,
       });
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  adminList = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      requireUser(req);
+      const query = req.query as unknown as ListOrchestrationsQuery;
+      const result = await this.service.listAdminOrchestrations(query);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  adminGetById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      requireUser(req);
+      const params = req.params as unknown as OrchestrationRequestIdParams;
+      const result = await this.service.getAdminOrchestrationById(
+        params.orchestrationRequestId,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);

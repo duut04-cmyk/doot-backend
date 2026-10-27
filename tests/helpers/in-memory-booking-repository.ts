@@ -35,9 +35,7 @@ export class InMemoryBookingRepository implements IBookingRepository {
     return (latest?.attemptNumber ?? 0) + 1;
   }
 
-  async findActiveByDeliveryId(
-    deliveryId: string,
-  ): Promise<ProviderBookingDto | null> {
+  async findActiveByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null> {
     return (
       this.bookings.find(
         (booking) =>
@@ -53,16 +51,13 @@ export class InMemoryBookingRepository implements IBookingRepository {
     return (
       this.bookings
         .filter(
-          (booking) =>
-            booking.deliveryId === deliveryId && booking.status === "BOOKED",
+          (booking) => booking.deliveryId === deliveryId && booking.status === "BOOKED",
         )
         .sort((a, b) => b.attemptNumber - a.attemptNumber)[0] ?? null
     );
   }
 
-  async findLatestByDeliveryId(
-    deliveryId: string,
-  ): Promise<ProviderBookingDto | null> {
+  async findLatestByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null> {
     return (
       this.bookings
         .filter((booking) => booking.deliveryId === deliveryId)
@@ -72,6 +67,16 @@ export class InMemoryBookingRepository implements IBookingRepository {
 
   async findById(bookingId: string): Promise<ProviderBookingDto | null> {
     return this.bookings.find((booking) => booking.id === bookingId) ?? null;
+  }
+
+  async findByOrchestrationRequestId(
+    orchestrationRequestId: string,
+  ): Promise<ProviderBookingDto | null> {
+    return (
+      this.bookings.find(
+        (booking) => booking.orchestrationRequestId === orchestrationRequestId,
+      ) ?? null
+    );
   }
 
   async createBookingAttempt(input: {

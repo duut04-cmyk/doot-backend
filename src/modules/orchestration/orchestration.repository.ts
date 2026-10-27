@@ -8,14 +8,16 @@ import { getPrismaClient } from "../../config/database.js";
 import type {
   CreateOrchestrationEvaluationInput,
   OrchestrationEvaluationDto,
+  OrchestrationListAggregate,
+  OrchestrationListFilters,
+  OrchestrationListLookup,
   OrchestrationOptionDto,
   OrchestrationRequestDto,
   ScoreBreakdown,
 } from "./orchestration.types.js";
 
 export type OrchestrationDbClient =
-  | Prisma.TransactionClient
-  | ReturnType<typeof getPrismaClient>;
+  Prisma.TransactionClient | ReturnType<typeof getPrismaClient>;
 
 const requestInclude = {
   evaluations: { orderBy: { createdAt: "asc" as const } },
@@ -66,8 +68,7 @@ function mapEvaluation(row: {
     available: row.available,
     availableDriverCount: row.availableDriverCount,
     quoteAvailable: row.quoteAvailable,
-    quoteAmount:
-      row.quoteAmount == null ? null : Number(row.quoteAmount.toString()),
+    quoteAmount: row.quoteAmount == null ? null : Number(row.quoteAmount.toString()),
     quoteCurrency: row.quoteCurrency,
     estimatedDeliveryAt: row.estimatedDeliveryAt,
     eligibilityReasons: row.eligibilityReasons as string[],
@@ -111,12 +112,10 @@ function mapOption(row: {
     scoreBreakdown: row.scoreBreakdown as ScoreBreakdown,
     selectionReason: row.selectionReason,
     quoteSnapshot: row.quoteSnapshot as Record<string, unknown>,
-    availabilitySnapshot: row.availabilitySnapshot as Record<
-      string,
-      unknown
-    > | null,
+    availabilitySnapshot: row.availabilitySnapshot as Record<string, unknown> | null,
     etaSnapshot: row.etaSnapshot as Record<string, unknown> | null,
-    cancellationPolicySnapshot: row.cancellationPolicySnapshot as OrchestrationOptionDto["cancellationPolicySnapshot"],
+    cancellationPolicySnapshot:
+      row.cancellationPolicySnapshot as OrchestrationOptionDto["cancellationPolicySnapshot"],
     createdAt: row.createdAt,
   };
 }
@@ -162,6 +161,7 @@ export interface IOrchestrationRepository {
   findSelectedOptionForDelivery(
     deliveryId: string,
   ): Promise<OrchestrationRequestDto | null>;
+  findById(orchestrationRequestId: string): Promise<OrchestrationRequestDto | null>;
   createRequest(
     input: {
       deliveryId: string;
@@ -200,6 +200,89 @@ export interface IOrchestrationRepository {
     },
     client?: OrchestrationDbClient,
   ): Promise<OrchestrationOptionDto>;
+  listAdmin(
+    page: number,
+    limit: number,
+    filters: OrchestrationListFilters,
+    lookup: OrchestrationListLookup,
+  ): Promise<{ items: OrchestrationListAggregate[]; total: number }>;
+}
+
+function matchesReference(reference: string, needle: string): boolean {
+  return reference.toLowerCase().includes(needle.toLowerCase());
+}
+
+export function applyInMemoryOrchestrationListFilters(
+  aggregate: OrchestrationListAggregate,
+  filters: OrchestrationListFilters,
+): boolean {
+  const { request, delivery, booking } = aggregate;
+
+  if (filters.from && request.createdAt < filters.from) {
+    return false;
+  }
+  if (filters.to && request.createdAt > filters.to) {
+    return false;
+  }
+  if (filters.deliveryId && request.deliveryId !== filters.deliveryId) {
+    return false;
+  }
+  if (filters.orchestrationStatus && request.status !== filters.orchestrationStatus) {
+    return false;
+  }
+  if (filters.reference) {
+    if (!delivery || !matchesReference(delivery.reference, filters.reference)) {
+      return false;
+    }
+  }
+  if (filters.deliveryStatus) {
+    if (!delivery || delivery.status !== filters.deliveryStatus) {
+      return false;
+    }
+  }
+  if (filters.bookingStatus) {
+    if (!booking || booking.status !== filters.bookingStatus) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildPrismaOrchestrationListWhere(
+  filters: OrchestrationListFilters,
+  bookingRequestIds?: string[],
+): Prisma.OrchestrationRequestWhereInput {
+  const where: Prisma.OrchestrationRequestWhereInput = {};
+
+  if (filters.from || filters.to) {
+    where.createdAt = {
+      ...(filters.from ? { gte: filters.from } : {}),
+      ...(filters.to ? { lte: filters.to } : {}),
+    };
+  }
+  if (filters.deliveryId) {
+    where.deliveryId = filters.deliveryId;
+  }
+  if (filters.orchestrationStatus) {
+    where.status = filters.orchestrationStatus;
+  }
+  const deliveryWhere: Prisma.DeliveryWhereInput = {};
+  if (filters.reference) {
+    deliveryWhere.reference = {
+      contains: filters.reference,
+      mode: "insensitive",
+    };
+  }
+  if (filters.deliveryStatus) {
+    deliveryWhere.status = filters.deliveryStatus;
+  }
+  if (Object.keys(deliveryWhere).length > 0) {
+    where.delivery = deliveryWhere;
+  }
+  if (bookingRequestIds) {
+    where.id = { in: bookingRequestIds };
+  }
+  return where;
 }
 
 export class PrismaOrchestrationRepository implements IOrchestrationRepository {
@@ -260,6 +343,16 @@ export class PrismaOrchestrationRepository implements IOrchestrationRepository {
       return null;
     }
     return request;
+  }
+
+  async findById(
+    orchestrationRequestId: string,
+  ): Promise<OrchestrationRequestDto | null> {
+    const row = await getPrismaClient().orchestrationRequest.findUnique({
+      where: { id: orchestrationRequestId },
+      include: requestInclude,
+    });
+    return row ? mapRequest(row) : null;
   }
 
   async createRequest(
@@ -386,6 +479,80 @@ export class PrismaOrchestrationRepository implements IOrchestrationRepository {
       },
     });
     return mapOption(row);
+  }
+
+  async listAdmin(
+    page: number,
+    limit: number,
+    filters: OrchestrationListFilters,
+    lookup: OrchestrationListLookup,
+  ): Promise<{ items: OrchestrationListAggregate[]; total: number }> {
+    void lookup;
+    let bookingRequestIds: string[] | undefined;
+    if (filters.bookingStatus) {
+      const rows = await getPrismaClient().providerBooking.findMany({
+        where: { status: filters.bookingStatus },
+        select: { orchestrationRequestId: true },
+      });
+      bookingRequestIds = rows.map((row) => row.orchestrationRequestId);
+      if (bookingRequestIds.length === 0) {
+        return { items: [], total: 0 };
+      }
+    }
+
+    const where = buildPrismaOrchestrationListWhere(filters, bookingRequestIds);
+    const [total, rows] = await Promise.all([
+      getPrismaClient().orchestrationRequest.count({ where }),
+      getPrismaClient().orchestrationRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          delivery: { include: { pickup: true, drop: true } },
+          selectedOption: true,
+          evaluations: { orderBy: { createdAt: "asc" } },
+        },
+      }),
+    ]);
+
+    const requestIds = rows.map((row) => row.id);
+    const bookings =
+      requestIds.length === 0
+        ? []
+        : await getPrismaClient().providerBooking.findMany({
+            where: { orchestrationRequestId: { in: requestIds } },
+          });
+    const bookingByRequestId = new Map(
+      bookings.map((booking) => [booking.orchestrationRequestId, booking]),
+    );
+
+    const items: OrchestrationListAggregate[] = rows.map((row) => {
+      const request = mapRequest(row);
+      const deliveryRow = row.delivery;
+      const bookingRow = bookingByRequestId.get(row.id);
+      return {
+        request,
+        delivery: deliveryRow
+          ? {
+              id: deliveryRow.id,
+              reference: deliveryRow.reference,
+              status: deliveryRow.status,
+              pickupAddressText: deliveryRow.pickup?.addressText ?? "",
+              dropAddressText: deliveryRow.drop?.addressText ?? "",
+            }
+          : null,
+        booking: bookingRow
+          ? {
+              status: bookingRow.status,
+              providerReference: bookingRow.providerReference,
+              providerOrderId: bookingRow.providerOrderId,
+            }
+          : null,
+      };
+    });
+
+    return { items, total };
   }
 }
 

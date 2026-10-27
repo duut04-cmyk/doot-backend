@@ -7,9 +7,13 @@ export type QuoteSnapshot = {
   providerQuoteId?: string | null;
   quotedAt?: string | null;
   providerQuoteAmount?: number;
+  /** Platform fee percentage applied when the snapshot was enriched (frozen for payment). */
+  platformFeePercent?: number;
   platformFeeAmount?: number;
   gstAmount?: number;
   customerPayableAmount?: number;
+  /** Sanitized provider-specific fields (e.g. Shiprocket courier / AWB reconciliation). */
+  providerMetadata?: Record<string, unknown> | null;
 };
 
 export type ProviderBookingDto = {

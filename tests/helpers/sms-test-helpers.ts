@@ -10,3 +10,14 @@ export function createNoopSmsSender(overrides?: Partial<SmsSender>): SmsSender {
     ...overrides,
   };
 }
+
+/** SMS enabled with successful noop sends — use for OtpService generation tests. */
+export function createOtpTestSmsSender(overrides?: Partial<SmsSender>): SmsSender {
+  return createNoopSmsSender({
+    isEnabled: vi.fn(() => true),
+    canSendToCustomer: vi.fn(() => true),
+    sendPickupOtpSms: vi.fn(async () => undefined),
+    sendDeliveryOtpSms: vi.fn(async () => undefined),
+    ...overrides,
+  });
+}

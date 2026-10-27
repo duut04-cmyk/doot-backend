@@ -8,8 +8,7 @@ import type {
 } from "./booking.types.js";
 
 export type BookingDbClient =
-  | Prisma.TransactionClient
-  | ReturnType<typeof getPrismaClient>;
+  Prisma.TransactionClient | ReturnType<typeof getPrismaClient>;
 
 function toDecimal(value: number | null): PrismaNamespace.Decimal | null {
   if (value == null) return null;
@@ -61,11 +60,9 @@ function mapBooking(row: {
     providerOrderId: row.providerOrderId,
     providerReference: row.providerReference,
     providerStatus: row.providerStatus,
-    quotedAmount:
-      row.quotedAmount == null ? null : Number(row.quotedAmount.toString()),
+    quotedAmount: row.quotedAmount == null ? null : Number(row.quotedAmount.toString()),
     quotedCurrency: row.quotedCurrency,
-    bookedAmount:
-      row.bookedAmount == null ? null : Number(row.bookedAmount.toString()),
+    bookedAmount: row.bookedAmount == null ? null : Number(row.bookedAmount.toString()),
     bookedCurrency: row.bookedCurrency,
     providerQuoteId: row.providerQuoteId,
     quoteSnapshot: row.quoteSnapshot as QuoteSnapshot,
@@ -95,6 +92,9 @@ export interface IBookingRepository {
   findLatestBookedByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null>;
   findLatestByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null>;
   findById(bookingId: string): Promise<ProviderBookingDto | null>;
+  findByOrchestrationRequestId(
+    orchestrationRequestId: string,
+  ): Promise<ProviderBookingDto | null>;
   createBookingAttempt(
     input: {
       deliveryId: string;
@@ -169,9 +169,7 @@ export class PrismaBookingRepository implements IBookingRepository {
     return (latest?.attemptNumber ?? 0) + 1;
   }
 
-  async findActiveByDeliveryId(
-    deliveryId: string,
-  ): Promise<ProviderBookingDto | null> {
+  async findActiveByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null> {
     const row = await getPrismaClient().providerBooking.findFirst({
       where: {
         deliveryId,
@@ -192,9 +190,7 @@ export class PrismaBookingRepository implements IBookingRepository {
     return row ? mapBooking(row) : null;
   }
 
-  async findLatestByDeliveryId(
-    deliveryId: string,
-  ): Promise<ProviderBookingDto | null> {
+  async findLatestByDeliveryId(deliveryId: string): Promise<ProviderBookingDto | null> {
     const row = await getPrismaClient().providerBooking.findFirst({
       where: { deliveryId },
       orderBy: { attemptNumber: "desc" },
@@ -205,6 +201,16 @@ export class PrismaBookingRepository implements IBookingRepository {
   async findById(bookingId: string): Promise<ProviderBookingDto | null> {
     const row = await getPrismaClient().providerBooking.findUnique({
       where: { id: bookingId },
+    });
+    return row ? mapBooking(row) : null;
+  }
+
+  async findByOrchestrationRequestId(
+    orchestrationRequestId: string,
+  ): Promise<ProviderBookingDto | null> {
+    const row = await getPrismaClient().providerBooking.findFirst({
+      where: { orchestrationRequestId },
+      orderBy: { createdAt: "desc" },
     });
     return row ? mapBooking(row) : null;
   }
@@ -281,9 +287,7 @@ export class PrismaBookingRepository implements IBookingRepository {
         bookedAmount: toDecimal(input.bookedAmount ?? null),
         bookedCurrency: input.bookedCurrency,
         quotedAmount:
-          input.quotedAmount !== undefined
-            ? toDecimal(input.quotedAmount)
-            : undefined,
+          input.quotedAmount !== undefined ? toDecimal(input.quotedAmount) : undefined,
         quotedCurrency: input.quotedCurrency,
         providerQuoteId: input.providerQuoteId,
         quoteSnapshot: input.quoteSnapshot

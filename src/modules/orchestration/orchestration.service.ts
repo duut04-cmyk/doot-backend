@@ -4,6 +4,10 @@ import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import {
+  bookingRepository,
+  type IBookingRepository,
+} from "../booking/booking.repository.js";
+import {
   deliveryRepository,
   toDeliveryDetailDto,
   type IDeliveryRepository,
@@ -21,7 +25,21 @@ import {
   isProviderOrchestrationCandidate,
   resolvePrimaryService,
 } from "./orchestration.eligibility.js";
-import { mapOrchestrationResponse } from "./orchestration.mapper.js";
+import {
+  partitionOrchestrationProviders,
+  shouldRunFallbackTier,
+} from "./orchestration.fallback-policy.js";
+import {
+  mapOrchestrationResponse,
+  toAdminOrchestrationListItem,
+  toAdminOrchestrationRunDetail,
+} from "./orchestration.mapper.js";
+import type { ListOrchestrationsQuery } from "./orchestration.schema.js";
+import type {
+  GetAdminOrchestrationRunResult,
+  ListOrchestrationsResult,
+  OrchestrationListLookup,
+} from "./orchestration.types.js";
 import {
   OrchestrationProviderEvaluationService,
   orchestrationProviderEvaluationService,
@@ -32,11 +50,19 @@ import {
 } from "./orchestration.repository.js";
 import { enrichQuoteSnapshotWithCustomerPricing } from "../pricing/customer-delivery-pricing.js";
 import {
+  runtimeSettingsService,
+  type RuntimeSettingsService,
+} from "../runtime-settings/runtime-settings.service.js";
+import {
   buildSelectionReason,
   compareScoredEvaluations,
   scoreEligibleEvaluations,
-  type ScorableEvaluation,
 } from "./orchestration.scoring.js";
+import {
+  buildScorableEligibleEvaluations,
+  resolvePersistedEvaluationForWinner,
+  resolveWinningOutcome,
+} from "./orchestration.winner-selection.js";
 import { toCancellationPolicySnapshot } from "../provider/contracts/cancellation-policy.js";
 import type { ProviderWithRelations } from "../provider/provider.repository.js";
 import type {
@@ -61,7 +87,120 @@ export class OrchestrationService {
     private readonly providerEvaluation: OrchestrationProviderEvaluationService = orchestrationProviderEvaluationService,
     private readonly orchestrationMaxDurationMs: number = env.ORCHESTRATION_MAX_DURATION_MS ??
       15_000,
+    private readonly bookingRepo: IBookingRepository = bookingRepository,
+    private readonly runtimeSettings: RuntimeSettingsService = runtimeSettingsService,
   ) {}
+
+  private orchestrationListLookup(): OrchestrationListLookup {
+    return {
+      findDeliveryById: async (deliveryId) => {
+        const delivery = await this.deliveryRepo.findById(deliveryId);
+        if (!delivery) {
+          return null;
+        }
+        return {
+          id: delivery.id,
+          reference: delivery.reference,
+          status: delivery.status,
+          pickupAddressText: delivery.pickup.addressText,
+          dropAddressText: delivery.drop.addressText,
+        };
+      },
+      findBookingByOrchestrationRequestId: async (orchestrationRequestId) => {
+        const booking =
+          await this.bookingRepo.findByOrchestrationRequestId(orchestrationRequestId);
+        if (!booking) {
+          return null;
+        }
+        return {
+          status: booking.status,
+          providerReference: booking.providerReference,
+          providerOrderId: booking.providerOrderId,
+        };
+      },
+    };
+  }
+
+  async getAdminOrchestrationById(
+    orchestrationRequestId: string,
+  ): Promise<GetAdminOrchestrationRunResult> {
+    const request = await this.orchestrationRepo.findById(orchestrationRequestId);
+    if (!request) {
+      throw new AppError("Orchestration result not found.", {
+        statusCode: 404,
+        code: ErrorCodes.ORCHESTRATION_NOT_FOUND,
+      });
+    }
+
+    const delivery = await this.deliveryRepo.findById(request.deliveryId);
+    const deliverySnapshot = delivery
+      ? {
+          id: delivery.id,
+          reference: delivery.reference,
+          status: delivery.status,
+          pickupAddressText: delivery.pickup.addressText,
+          dropAddressText: delivery.drop.addressText,
+        }
+      : null;
+
+    const booking = await this.bookingRepo.findByOrchestrationRequestId(request.id);
+    const bookingSnapshot = booking
+      ? {
+          status: booking.status,
+          providerReference: booking.providerReference,
+          providerOrderId: booking.providerOrderId,
+        }
+      : null;
+
+    return {
+      success: true,
+      data: toAdminOrchestrationRunDetail(request, deliverySnapshot, bookingSnapshot),
+    };
+  }
+
+  async listAdminOrchestrations(
+    query: ListOrchestrationsQuery,
+  ): Promise<ListOrchestrationsResult> {
+    const {
+      page,
+      limit,
+      from,
+      to,
+      reference,
+      deliveryId,
+      orchestrationStatus,
+      deliveryStatus,
+      bookingStatus,
+    } = query;
+
+    const filters = {
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      reference,
+      deliveryId,
+      orchestrationStatus,
+      deliveryStatus,
+      bookingStatus,
+    };
+
+    const result = await this.orchestrationRepo.listAdmin(
+      page,
+      limit,
+      filters,
+      this.orchestrationListLookup(),
+    );
+
+    return {
+      success: true,
+      data: {
+        items: result.items.map(toAdminOrchestrationListItem),
+        page,
+        limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / limit)),
+      },
+    };
+  }
 
   async orchestrate(input: {
     deliveryId: string;
@@ -260,92 +399,109 @@ export class OrchestrationService {
 
     const orchestrationDeadlineAt = Date.now() + this.orchestrationMaxDurationMs;
 
-    const settled = await Promise.allSettled(
-      providers.map((provider) =>
-        this.evaluateProviderWithinOrchestrationBudget({
-          provider,
-          delivery: input.delivery,
-          requestId: input.requestId,
-          testHints: input.testHints,
-          deadlineAt: orchestrationDeadlineAt,
-        }),
-      ),
+    const tiers = partitionOrchestrationProviders(
+      providers,
+      env.ORCHESTRATION_PREFERRED_PROVIDER_CODE,
     );
 
-    const outcomes: ProviderEvaluationOutcome[] = settled.map((result, index) => {
-      if (result.status === "fulfilled") {
-        return result.value;
-      }
-      const provider = providers[index];
-      return {
-        status: "ERROR" as const,
-        signals: {
-          providerId: provider?.id ?? "unknown",
-          providerCode: provider?.code ?? "UNKNOWN",
-          providerServiceId: null,
-          providerServiceCode: null,
-          serviceability: null,
-          availability: null,
-          quote: null,
-          cancellationPolicy: null,
-          compatibility: {
-            weightCompatible: true,
-            dimensionsCompatible: true,
-            requirementsCompatible: true,
-            scheduleCompatible: true,
+    const evaluateBatch = async (batch: ProviderWithRelations[]) => {
+      const settled = await Promise.allSettled(
+        batch.map((provider) =>
+          this.evaluateProviderWithinOrchestrationBudget({
+            provider,
+            delivery: input.delivery,
+            requestId: input.requestId,
+            testHints: input.testHints,
+            deadlineAt: orchestrationDeadlineAt,
+          }),
+        ),
+      );
+      return settled.map((result, index) => {
+        if (result.status === "fulfilled") {
+          const value = result.value;
+          return Array.isArray(value) ? value : [value];
+        }
+        const provider = batch[index];
+        return [
+          {
+            status: "ERROR" as const,
+            signals: {
+              providerId: provider?.id ?? "unknown",
+              providerCode: provider?.code ?? "UNKNOWN",
+              providerServiceId: null,
+              providerServiceCode: null,
+              serviceability: null,
+              availability: null,
+              quote: null,
+              cancellationPolicy: null,
+              compatibility: {
+                weightCompatible: true,
+                dimensionsCompatible: true,
+                requirementsCompatible: true,
+                scheduleCompatible: true,
+              },
+              warnings: [],
+              providerMetadata: {},
+            },
+            exclusionReasons: [],
+            eligibilityReasons: [],
+            errorCategory: ErrorCodes.PROVIDER_ADAPTER_ERROR,
+            score: null,
+            scoreBreakdown: null,
           },
-          warnings: [],
-          providerMetadata: {},
-        },
-        exclusionReasons: [],
-        eligibilityReasons: [],
-        errorCategory: ErrorCodes.PROVIDER_ADAPTER_ERROR,
-        score: null,
-        scoreBreakdown: null,
-      };
-    });
+        ];
+      });
+    };
+
+    let evaluatedProviders = providers;
+    let outcomeGroups: ProviderEvaluationOutcome[][];
+
+    if (tiers.useTieredEvaluation) {
+      const preferredGroups = await evaluateBatch(tiers.preferred);
+      const preferredOutcomes = preferredGroups.flat();
+      if (
+        shouldRunFallbackTier({
+          useTieredEvaluation: true,
+          preferredOutcomes,
+        })
+      ) {
+        const fallbackGroups = await evaluateBatch(tiers.fallback);
+        outcomeGroups = [...preferredGroups, ...fallbackGroups];
+        evaluatedProviders = [...tiers.preferred, ...tiers.fallback];
+      } else {
+        outcomeGroups = preferredGroups;
+        evaluatedProviders = tiers.preferred;
+      }
+    } else {
+      outcomeGroups = await evaluateBatch(tiers.fallback);
+    }
+
+    const outcomes = outcomeGroups.flat();
 
     const evaluationInputs = outcomes.map((outcome) =>
       this.toEvaluationInput(input.request.id, outcome),
     );
 
-    const eligible = outcomes.filter((outcome) => outcome.status === "ELIGIBLE");
-    const scorable: ScorableEvaluation[] = eligible
-      .filter(
-        (outcome): outcome is ProviderEvaluationOutcome & { status: "ELIGIBLE" } =>
-          outcome.signals.quote != null,
-      )
-      .map((outcome, index) => ({
-        evaluationId: `temp-${index}`,
-        providerId: outcome.signals.providerId,
-        providerCode: outcome.signals.providerCode,
-        providerPriority:
-          providers.find((provider) => provider.id === outcome.signals.providerId)
-            ?.priority ?? 100,
-        quote: outcome.signals.quote!,
-        availability: outcome.signals.availability,
-        estimatedDeliveryAt: outcome.signals.quote?.estimatedDeliveryAt
-          ? new Date(outcome.signals.quote.estimatedDeliveryAt)
-          : null,
-        estimatedDeliveryMinutes:
-          outcome.signals.quote?.estimatedDeliveryMinutes ?? null,
-      }));
+    const scorable = buildScorableEligibleEvaluations(
+      outcomes,
+      (providerId) =>
+        evaluatedProviders.find((provider) => provider.id === providerId)?.priority ??
+        100,
+    );
 
     const scored = scoreEligibleEvaluations(scorable).sort(compareScoredEvaluations);
     const winner = scored[0] ?? null;
 
-    for (const evaluation of evaluationInputs) {
-      const scoredMatch = winner
-        ? scored.find((item) => item.providerId === evaluation.providerId)
-        : null;
+    for (let i = 0; i < evaluationInputs.length; i += 1) {
+      const scoredMatch = scored.find((item) => item.outcomeIndex === i);
       if (scoredMatch) {
-        evaluation.score = scoredMatch.score;
-        evaluation.scoreBreakdown = scoredMatch.scoreBreakdown;
-        if (evaluation.status === "ELIGIBLE") {
-          evaluation.status = "ELIGIBLE";
-        }
+        evaluationInputs[i]!.score = scoredMatch.score;
+        evaluationInputs[i]!.scoreBreakdown = scoredMatch.scoreBreakdown;
       }
     }
+
+    const platformServiceFeePercent =
+      await this.runtimeSettings.getPlatformServiceFeePercent();
 
     return this.deliveryRepo.withTransaction(async (tx) => {
       const persistedEvaluations = await this.orchestrationRepo.createEvaluations(
@@ -355,11 +511,18 @@ export class OrchestrationService {
 
       let selectedOption = null;
       if (winner) {
-        const winnerEvaluation = persistedEvaluations.find(
-          (evaluation) => evaluation.providerId === winner.providerId,
+        const winnerEvaluation = resolvePersistedEvaluationForWinner(
+          persistedEvaluations,
+          winner,
+          outcomes,
         );
+        const winnerOutcome = resolveWinningOutcome(winner, outcomes);
         if (winnerEvaluation && winnerEvaluation.quoteAmount != null) {
           const selectionReason = buildSelectionReason(winner);
+          const providerMetadata =
+            winnerEvaluation.providerMetadata ??
+            winnerOutcome?.signals.providerMetadata ??
+            null;
           selectedOption = await this.orchestrationRepo.createSelectedOption(
             {
               orchestrationRequestId: input.request.id,
@@ -371,11 +534,15 @@ export class OrchestrationService {
               score: winner.score,
               scoreBreakdown: winner.scoreBreakdown,
               selectionReason,
-              quoteSnapshot: enrichQuoteSnapshotWithCustomerPricing({
-                amount: winnerEvaluation.quoteAmount,
-                currency: winnerEvaluation.quoteCurrency ?? "INR",
-                providerQuoteId: winner.quote.providerQuoteId ?? null,
-              }),
+              quoteSnapshot: enrichQuoteSnapshotWithCustomerPricing(
+                {
+                  amount: winnerEvaluation.quoteAmount,
+                  currency: winnerEvaluation.quoteCurrency ?? "INR",
+                  providerQuoteId: winner.quote.providerQuoteId ?? null,
+                  providerMetadata,
+                },
+                platformServiceFeePercent,
+              ),
               availabilitySnapshot:
                 winnerEvaluation.availabilityKnown == null
                   ? null
@@ -395,9 +562,6 @@ export class OrchestrationService {
                     }
                   : null,
               cancellationPolicySnapshot: (() => {
-                const winnerOutcome = outcomes.find(
-                  (item) => item.signals.providerId === winner.providerId,
-                );
                 const policy = winnerOutcome?.signals.cancellationPolicy;
                 return policy ? toCancellationPolicySnapshot(policy) : null;
               })(),
@@ -452,8 +616,9 @@ export class OrchestrationService {
           requestId: input.requestId,
           deliveryId: input.deliveryId,
           orchestrationRequestId: input.request.id,
-          providerCount: providers.length,
-          eligibleCount: eligible.length,
+          providerCount: evaluatedProviders.length,
+          eligibleCount: outcomes.filter((outcome) => outcome.status === "ELIGIBLE")
+            .length,
           selectedProviderCode: selectedOption?.providerCode ?? null,
           selectedCancellationPolicyKnown:
             selectedOption?.cancellationPolicySnapshot?.policyKnown ?? null,
@@ -485,7 +650,7 @@ export class OrchestrationService {
     requestId: string;
     testHints?: AdapterExecutionContext["testHints"];
     deadlineAt: number;
-  }): Promise<ProviderEvaluationOutcome> {
+  }): Promise<ProviderEvaluationOutcome | ProviderEvaluationOutcome[]> {
     const remainingMs = input.deadlineAt - Date.now();
     if (remainingMs <= 0) {
       return this.buildOrchestrationTimeoutOutcome(input.provider);

@@ -243,6 +243,47 @@ Phase 3 adds the adapter abstraction layer only — no real Shadowfax/Shiprocket
 
 **Local orchestration latency:** Each provider evaluation shares a wall-clock budget (`ORCHESTRATION_MAX_DURATION_MS`, default 15s outside production). Slow or misconfigured sandbox providers are marked `ERROR`/`PROVIDER_TIMEOUT` instead of blocking the full adapter HTTP timeout (~30s each). For the fastest local path, keep only the `MOCK` provider enabled in admin (or set `ENABLE_MOCK_PROVIDER_ADAPTER=true`) and disable other providers until their credentials are ready.
 
+### Shiprocket hyperlocal (Phase 1)
+
+Phase 1 covers sandbox JWT auth, hyperlocal serviceability, Google reverse geocoding for Indian postcodes, multi-rate fan-out into orchestration scoring, and preferred-provider fallback (`ORCHESTRATION_PREFERRED_PROVIDER_CODE`).
+
+Booking lifecycle (documented adhoc order + AWB assign, cancel, tracking) is implemented behind **`SHIPROCKET_BOOKING_ENABLED=false` by default** and requires `SHIPROCKET_PICKUP_LOCATION`. Customer refunds after cancellation remain on the existing Doot payment path — Shiprocket cancel does not trigger Cashfree refunds automatically.
+
+**Environment (see `.env.example`):**
+
+- `SHIPROCKET_ENABLED`, `SHIPROCKET_API_BASE_URL`, `SHIPROCKET_AUTH_EMAIL`, `SHIPROCKET_AUTH_PASSWORD`
+- `GOOGLE_GEOCODING_API_KEY` (server-only Geocoding API)
+- `ORCHESTRATION_PREFERRED_PROVIDER_CODE=SHIPROCKET` (optional)
+
+**Sandbox-only serviceability probe (login + one GET, no orders):**
+
+```bash
+cd backend
+# .env: SHIPROCKET_API_BASE_URL=https://api-sandbox.shiprocket.in
+#       SHIPROCKET_AUTH_EMAIL=... SHIPROCKET_AUTH_PASSWORD=...
+# Optional postcodes; otherwise set GOOGLE_GEOCODING_API_KEY for reverse geocode.
+
+npm run probe:shiprocket-sandbox -- \
+  --pickup-postcode 110030 \
+  --delivery-postcode 122002 \
+  --lat-from 28.509223937988 \
+  --long-from 77.067848205566 \
+  --lat-to 28.50724220275879 \
+  --long-to 77.06745147705078 \
+  --weight 1.2
+```
+
+The probe refuses any host other than `https://api-sandbox.shiprocket.in`, never prints JWTs or credentials, and does not write live responses into the repo. Use `--help` for env aliases (`SHIPROCKET_PROBE_*`).
+
+**Manual sandbox checklist:**
+
+1. Enable Geocoding API on Google Cloud; restrict the key to Geocoding API (and server IPs if possible).
+2. Set Shiprocket sandbox credentials in `.env` and register admin provider `code=SHIPROCKET` with `SERVICEABILITY` + `PRICING`, `orchestrationEnabled=true`, lowest `priority`.
+3. Run `npm run probe:shiprocket-sandbox` with your test coordinates/postcodes; save a **redacted** JSON fixture under `tests/fixtures/shiprocket/` manually if the live shape differs from fixtures.
+4. Create a delivery with coordinates and orchestrate; confirm `OPTION_READY` and winning option metadata includes `shiprocketHyperlocalRates`.
+
+**API ambiguities (Phase 1):** Live sandbox responses may expose additional courier/rate identifier fields beyond the documented example — raw entries are stored in `providerMetadata.shiprocketHyperlocalRates` for Phase 2 booking. Confirm `weight` query unit (assumed kg) against sandbox once.
+
 `integrationStatus` remains `CONFIGURED` until an adapter is registered, credentials/capabilities exist, and health is `HEALTHY`. Real providers are not marked `READY` automatically.
 
 ### Adding a real provider adapter (Phase 4)

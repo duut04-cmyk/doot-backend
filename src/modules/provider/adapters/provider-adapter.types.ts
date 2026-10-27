@@ -1,7 +1,13 @@
 import type { ProviderCapability } from "@prisma/client";
-import type { AvailabilityRequest, AvailabilityResult } from "../contracts/availability.js";
+import type {
+  AvailabilityRequest,
+  AvailabilityResult,
+} from "../contracts/availability.js";
 import type { BookingRequest, NormalizedBookingResult } from "../contracts/booking.js";
-import type { CancellationRequest, NormalizedCancellationResult } from "../contracts/cancellation.js";
+import type {
+  CancellationRequest,
+  NormalizedCancellationResult,
+} from "../contracts/cancellation.js";
 import type {
   CancellationPolicy,
   CancellationPolicyRequest,
@@ -11,7 +17,10 @@ import type {
   NormalizedServiceabilityResult,
   ServiceabilityRequest,
 } from "../contracts/serviceability.js";
-import type { NormalizedTrackingResult, TrackingRequest } from "../contracts/tracking.js";
+import type {
+  NormalizedTrackingResult,
+  TrackingRequest,
+} from "../contracts/tracking.js";
 import type {
   NormalizedProviderWebhookEvent,
   WebhookParseRequest,
@@ -142,4 +151,34 @@ export function isQuoteProbeAdapter(
   adapter: ProviderAdapter,
 ): adapter is ProviderQuoteProbeAdapter {
   return typeof (adapter as ProviderQuoteProbeAdapter).probeQuote === "function";
+}
+
+export type HyperlocalRateCandidate = {
+  quote: NormalizedQuote;
+  providerMetadata: Record<string, unknown>;
+};
+
+export type HyperlocalRatesFetchResult = {
+  serviceability: NormalizedServiceabilityResult;
+  availability: AvailabilityResult;
+  candidates: HyperlocalRateCandidate[];
+  warnings: string[];
+  providerMetadata: Record<string, unknown>;
+  cancellationPolicy: CancellationPolicy;
+};
+
+export interface ProviderHyperlocalRatesAdapter extends ProviderAdapter {
+  fetchHyperlocalRates(
+    input: ServiceabilityRequest,
+    ctx: AdapterExecutionContext,
+  ): Promise<HyperlocalRatesFetchResult>;
+}
+
+export function isHyperlocalRatesAdapter(
+  adapter: ProviderAdapter,
+): adapter is ProviderHyperlocalRatesAdapter {
+  return (
+    typeof (adapter as ProviderHyperlocalRatesAdapter).fetchHyperlocalRates ===
+    "function"
+  );
 }

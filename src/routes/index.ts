@@ -15,6 +15,7 @@ import { createSettingsAdminRouter } from "../modules/settings/settings.routes.j
 import type { SettingsController } from "../modules/settings/settings.controller.js";
 import { createProviderAdminRouter } from "../modules/provider/provider.routes.js";
 import type { ProviderController } from "../modules/provider/provider.controller.js";
+import { createAdminOrchestrationListRouter } from "../modules/orchestration/orchestration-admin-list.routes.js";
 import { createAdminReportingRouter } from "../modules/admin-reporting/reporting.routes.js";
 import { createTestSmsRouter } from "../modules/test-sms/test-sms.routes.js";
 import { createPaymentWebhookRouter } from "../modules/payment/webhook/payment-webhook.routes.js";
@@ -65,6 +66,8 @@ export function createApiV1Router(options?: {
     createAdminOperationalRouter(),
     createAdminDeliveryHistoryRouter(),
   );
+
+  router.use("/admin/orchestrations", createAdminOrchestrationListRouter());
 
   router.use("/admin/reporting", createAdminReportingRouter());
 

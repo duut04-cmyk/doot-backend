@@ -168,6 +168,283 @@ describe("MSG91 SMS provider", () => {
     expect(body.recipients[0]?.otp).toBe("112233");
   });
 
+  it("maps HTTP 5xx to UNKNOWN outcome", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ type: "error", message: "server error" }, { status: 503 }),
+    );
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-5xx",
+      deliveryReference: "DOOT-2004",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2004",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
+  it("maps request timeout to TIMEOUT outcome", async () => {
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          const error = new Error("The operation was aborted");
+          error.name = "AbortError";
+          reject(error);
+        }),
+    );
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        { baseUrl: config.baseUrl, authKey: config.authKey, timeoutMs: 1 },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-timeout",
+      deliveryReference: "DOOT-2005",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2005",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("TIMEOUT");
+  });
+
+  it("maps network failures to UNKNOWN outcome", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-network",
+      deliveryReference: "DOOT-2006",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2006",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
+  it("maps HTTP 200 with explicit failure type to FAILED", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ type: "failure", request_id: "req-fail" }),
+    );
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-fail-type",
+      deliveryReference: "DOOT-2007",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2007",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("FAILED");
+  });
+
+  it("maps HTTP 200 with missing type to UNKNOWN", async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ request_id: "req-no-type" }));
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-no-type",
+      deliveryReference: "DOOT-2009",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2009",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
+  it("maps HTTP 200 with empty body to UNKNOWN", async () => {
+    const fetchImpl = vi.fn(async () => new Response("", { status: 200 }));
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-empty-body",
+      deliveryReference: "DOOT-2010",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2010",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
+  it("maps HTTP 200 with non-JSON body to UNKNOWN", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("upstream html error page", { status: 200 }),
+    );
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-non-json",
+      deliveryReference: "DOOT-2011",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2011",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
+  it("maps HTTP 200 with unrecognized type to UNKNOWN", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ type: "queued", request_id: "req-queued" }),
+    );
+    const provider = new Msg91SmsProvider(
+      config,
+      new Msg91Client(
+        {
+          baseUrl: config.baseUrl,
+          authKey: config.authKey,
+          timeoutMs: config.timeoutMs,
+        },
+        fetchImpl,
+      ),
+    );
+
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      correlationId: "corr-unknown-type",
+      deliveryReference: "DOOT-2008",
+      templateVariables: {
+        otp: "123456",
+        delivery_reference: "DOOT-2008",
+        driver_name: "Not assigned",
+        vehicle_type: "Not available",
+        vehicle_number: "Not available",
+        driver_phone_masked: "Not available",
+        event_type: "PICKUP",
+      },
+    });
+
+    expect(result.outcome).toBe("UNKNOWN");
+  });
+
   it("redacts auth headers in logsafe helper output", () => {
     expect(
       redactMsg91Headers({

@@ -15,6 +15,7 @@ import {
   providerAdapterResolver,
 } from "../provider/adapters/provider-adapter-resolver.js";
 import {
+  isHyperlocalRatesAdapter,
   isQuoteProbeAdapter,
   type AdapterExecutionContext,
 } from "../provider/adapters/provider-adapter.types.js";
@@ -81,7 +82,7 @@ export class OrchestrationProviderEvaluationService {
     delivery: DeliveryDetailDto;
     requestId: string;
     testHints?: AdapterExecutionContext["testHints"];
-  }): Promise<ProviderEvaluationOutcome> {
+  }): Promise<ProviderEvaluationOutcome | ProviderEvaluationOutcome[]> {
     const { provider, delivery, requestId, testHints } = input;
     const { serviceId, serviceCode } = resolvePrimaryService(provider);
     const baseSignals = {
@@ -138,6 +139,52 @@ export class OrchestrationProviderEvaluationService {
         config: resolved.config,
         testHints,
       };
+
+      if (isHyperlocalRatesAdapter(resolved.adapter)) {
+        const hyperlocal = await resolved.adapter.fetchHyperlocalRates(
+          toServiceabilityRequest(delivery),
+          ctx,
+        );
+        baseSignals.cancellationPolicy = hyperlocal.cancellationPolicy;
+        const sharedMetadata = sanitizeMetadata(hyperlocal.providerMetadata);
+        const outcomes = hyperlocal.candidates.map((candidate) => {
+          const signals: ProviderEvaluationOutcome["signals"] = {
+            ...baseSignals,
+            serviceability: hyperlocal.serviceability,
+            availability: hyperlocal.availability,
+            quote: candidate.quote,
+            warnings: hyperlocal.warnings,
+            providerMetadata: {
+              ...sharedMetadata,
+              ...sanitizeMetadata(candidate.providerMetadata),
+            },
+            cancellationPolicy: hyperlocal.cancellationPolicy,
+          };
+          return this.buildOutcome(signals);
+        });
+        if (outcomes.length === 0) {
+          const signals: ProviderEvaluationOutcome["signals"] = {
+            ...baseSignals,
+            serviceability: hyperlocal.serviceability,
+            availability: hyperlocal.availability,
+            quote: {
+              available: false,
+              amount: null,
+              providerQuoteId: null,
+              estimatedDeliveryAt: null,
+              estimatedDeliveryMinutes: null,
+              breakdown: null,
+              quotedAt: new Date().toISOString(),
+              reason: "No hyperlocal rates returned.",
+            },
+            warnings: hyperlocal.warnings,
+            providerMetadata: sharedMetadata,
+            cancellationPolicy: hyperlocal.cancellationPolicy,
+          };
+          return this.buildOutcome(signals);
+        }
+        return outcomes;
+      }
 
       const quoteRequest = toQuoteRequest(delivery, {
         serviceCode: serviceCode ?? undefined,

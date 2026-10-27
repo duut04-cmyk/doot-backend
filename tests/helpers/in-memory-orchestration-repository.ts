@@ -7,7 +7,15 @@ import type {
   OrchestrationRequestDto,
   ScoreBreakdown,
 } from "../../src/modules/orchestration/orchestration.types.js";
-import type { IOrchestrationRepository } from "../../src/modules/orchestration/orchestration.repository.js";
+import type {
+  OrchestrationListAggregate,
+  OrchestrationListFilters,
+  OrchestrationListLookup,
+} from "../../src/modules/orchestration/orchestration.types.js";
+import {
+  applyInMemoryOrchestrationListFilters,
+  type IOrchestrationRepository,
+} from "../../src/modules/orchestration/orchestration.repository.js";
 
 export class InMemoryOrchestrationRepository implements IOrchestrationRepository {
   requests: OrchestrationRequestDto[] = [];
@@ -59,9 +67,7 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
     deliveryId: string,
   ): Promise<OrchestrationRequestDto | null> {
     const request = this.requests
-      .filter(
-        (item) => item.deliveryId === deliveryId && item.status === "COMPLETED",
-      )
+      .filter((item) => item.deliveryId === deliveryId && item.status === "COMPLETED")
       .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
     return request ? this.hydrateRequest(request.id) : null;
   }
@@ -76,13 +82,17 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
     return request;
   }
 
-  async createRequest(
-    input: {
-      deliveryId: string;
-      requestedByUserId: string;
-      attemptNumber: number;
-    },
-  ): Promise<OrchestrationRequestDto> {
+  async findById(
+    orchestrationRequestId: string,
+  ): Promise<OrchestrationRequestDto | null> {
+    return this.hydrateRequest(orchestrationRequestId);
+  }
+
+  async createRequest(input: {
+    deliveryId: string;
+    requestedByUserId: string;
+    attemptNumber: number;
+  }): Promise<OrchestrationRequestDto> {
     const running = await this.findRunningByDeliveryId(input.deliveryId);
     if (running) {
       throw new Error("Orchestration already running for delivery.");
@@ -174,6 +184,35 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
     return option;
   }
 
+  async listAdmin(
+    page: number,
+    limit: number,
+    filters: OrchestrationListFilters,
+    lookup: OrchestrationListLookup,
+  ): Promise<{ items: OrchestrationListAggregate[]; total: number }> {
+    const aggregates: OrchestrationListAggregate[] = [];
+    for (const stub of this.requests) {
+      const request = this.hydrateRequest(stub.id);
+      if (!request) continue;
+      const delivery = await lookup.findDeliveryById(request.deliveryId);
+      const booking = await lookup.findBookingByOrchestrationRequestId(request.id);
+      aggregates.push({ request, delivery, booking });
+    }
+
+    const filtered = aggregates.filter((aggregate) =>
+      applyInMemoryOrchestrationListFilters(aggregate, filters),
+    );
+    filtered.sort(
+      (a, b) => b.request.createdAt.getTime() - a.request.createdAt.getTime(),
+    );
+    const total = filtered.length;
+    const start = (page - 1) * limit;
+    return {
+      items: filtered.slice(start, start + limit),
+      total,
+    };
+  }
+
   private hydrateRequest(requestId: string): OrchestrationRequestDto | null {
     const request = this.requests.find((item) => item.id === requestId);
     if (!request) {
@@ -183,8 +222,7 @@ export class InMemoryOrchestrationRepository implements IOrchestrationRepository
       (item) => item.orchestrationRequestId === requestId,
     );
     const selectedOption =
-      this.options.find((item) => item.orchestrationRequestId === requestId) ??
-      null;
+      this.options.find((item) => item.orchestrationRequestId === requestId) ?? null;
     return {
       ...request,
       evaluations,

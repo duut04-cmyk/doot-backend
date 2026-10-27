@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import {
   classifyProviderAdapterError,
+  providerBookingMetadataReconciled,
   resolveNormalizedBookingResult,
 } from "../src/modules/booking/booking.provider-outcome.js";
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
 
 describe("booking provider outcome", () => {
+  it("detects reconciled Shiprocket metadata from AWB or shipment id", () => {
+    expect(providerBookingMetadataReconciled(undefined)).toBe(false);
+    expect(providerBookingMetadataReconciled({ shiprocketShipmentId: "123" })).toBe(
+      true,
+    );
+    expect(providerBookingMetadataReconciled({ shiprocketAwbCode: "AWB1" })).toBe(true);
+  });
+
   it("maps successful adapter result to BOOKED", () => {
     const resolved = resolveNormalizedBookingResult({
       success: true,

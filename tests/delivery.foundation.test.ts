@@ -118,6 +118,7 @@ describe("Delivery Phase 1 foundation", () => {
     router.get(
       "/",
       authenticate,
+      requireRole("CUSTOMER"),
       validateRequest({ query: listDeliveriesQuerySchema }),
       controller.list,
     );

@@ -143,6 +143,29 @@ describe("Provider Phase 2 admin configuration", () => {
       expect(updated.data.orchestrationEnabled).toBe(true);
     });
 
+    it("rejects enabled on generic PATCH (use status endpoint)", async () => {
+      const created = await createProviderViaService({ enabled: true });
+      const app = buildApp();
+      const disableAttempt = await request(app)
+        .patch(`/api/v1/admin/providers/${created.data.id}`)
+        .set("Authorization", `Bearer ${tokenFor(adminId)}`)
+        .send({ enabled: false });
+
+      expect(disableAttempt.status).toBe(400);
+      expect(disableAttempt.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+
+      const detail = await service.getProvider(created.data.id);
+      expect(detail.data.enabled).toBe(true);
+
+      const activated = await request(app)
+        .patch(`/api/v1/admin/providers/${created.data.id}/status`)
+        .set("Authorization", `Bearer ${tokenFor(adminId)}`)
+        .send({ status: "INACTIVE" });
+
+      expect(activated.status).toBe(200);
+      expect(activated.body.data.enabled).toBe(false);
+    });
+
     it("updates status and enable/disable lifecycle", async () => {
       const created = await createProviderViaService({ enabled: false });
       const activated = await service.updateProviderStatus({
@@ -342,9 +365,9 @@ describe("Provider Phase 2 admin configuration", () => {
         body: { API_KEY: "key" },
         audit: { adminUserId: adminId, requestId: "req-cred2" },
       });
-      await service.updateProvider({
+      await service.updateProviderStatus({
         providerId: created.data.id,
-        body: { enabled: false },
+        body: { status: "INACTIVE" },
         audit: { adminUserId: adminId, requestId: "req-off" },
       });
       const detail = await service.getProvider(created.data.id);

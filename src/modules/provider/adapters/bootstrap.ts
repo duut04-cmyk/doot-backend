@@ -6,6 +6,8 @@ import {
 } from "./provider-adapter-registry.js";
 import { MockProviderAdapter } from "./mock/mock-provider.adapter.js";
 import { MOCK_PROVIDER_CODE } from "./mock/mock-provider.constants.js";
+import { ShiprocketProviderAdapter } from "./shiprocket/shiprocket-provider.adapter.js";
+import { SHIPROCKET_PROVIDER_CODE } from "./shiprocket/shiprocket.constants.js";
 
 const initializedRegistries = new WeakSet<ProviderAdapterRegistry>();
 
@@ -22,6 +24,16 @@ export function initializeProviderAdapters(
       logger.info(
         { providerCode: MOCK_PROVIDER_CODE },
         "mock_provider_adapter_registered",
+      );
+    }
+  }
+
+  if (env.SHIPROCKET_ENABLED || env.NODE_ENV === "test") {
+    if (!registry.has(SHIPROCKET_PROVIDER_CODE)) {
+      registry.register(new ShiprocketProviderAdapter());
+      logger.info(
+        { providerCode: SHIPROCKET_PROVIDER_CODE },
+        "shiprocket_provider_adapter_registered",
       );
     }
   }

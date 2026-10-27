@@ -7,17 +7,17 @@ import {
 } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
-import { authRepository, type IAuthRepository } from "../auth/auth.repository.js";
 import {
   generateEmailVerificationOtp,
   hashOtp,
   verifyOtpHash,
 } from "../auth/auth.crypto.js";
-import {
-  emailService,
-  type EmailSender,
-} from "../../infrastructure/email/email.service.js";
 import { buildOtpSmsTemplateVariables } from "../../infrastructure/sms/sms.mapper.js";
+import {
+  isAmbiguousSmsOutcome,
+  readSmsOutcomeFromError,
+  shouldInvalidateOtpAfterSmsFailure,
+} from "../../infrastructure/sms/sms-outcome.js";
 import { smsService, type SmsSender } from "../../infrastructure/sms/sms.service.js";
 import { toPhoneResponse } from "../../core/phone/phone.js";
 import {
@@ -34,7 +34,11 @@ import {
   type DeliveryLifecycleService,
 } from "../delivery/delivery-lifecycle.service.js";
 import { GENERIC_OTP_ERROR } from "./otp.constants.js";
-import { otpRepository, type IOtpRepository } from "./otp.repository.js";
+import {
+  otpRepository,
+  type DeliveryOtpDto,
+  type IOtpRepository,
+} from "./otp.repository.js";
 
 const PICKUP_GENERATION_STATUSES: DeliveryStatus[] = [
   "BOOKED",
@@ -53,8 +57,6 @@ export class OtpService {
     private readonly deliveryRepo: IDeliveryRepository = deliveryRepository,
     private readonly otpRepo: IOtpRepository = otpRepository,
     private readonly lifecycle: DeliveryLifecycleService = deliveryLifecycleService,
-    private readonly authRepo: IAuthRepository = authRepository,
-    private readonly mailer: EmailSender = emailService,
     private readonly sms: SmsSender = smsService,
     private readonly driverRepo: IDriverRepository = driverRepository,
   ) {}
@@ -78,47 +80,27 @@ export class OtpService {
       });
     }
 
-    await this.ensureGenerationAllowed(input.deliveryId, "PICKUP");
-    const code = generateEmailVerificationOtp();
-    const codeHash = await hashOtp(code);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_SECONDS * 1000);
-
-    await this.otpRepo.invalidateActive(input.deliveryId, "PICKUP");
-    await this.otpRepo.create({
+    const previousStatus = delivery.status;
+    const { code, expiresAt } = await this.createOperationalOtpRecord({
       deliveryId: input.deliveryId,
       type: "PICKUP",
-      codeHash,
-      expiresAt,
-      maxAttempts: OTP_MAX_ATTEMPTS,
+      contact: delivery.pickup,
+      contactRole: "pickup",
+      sendSms: async (otp) => {
+        await this.sendPickupOtpSms({
+          pickup: delivery.pickup,
+          deliveryId: input.deliveryId,
+          deliveryReference: delivery.reference,
+          otp,
+          requestId: input.requestId,
+        });
+      },
     });
 
-    const customer = await this.authRepo.findUserById(delivery.customerId);
-    if (!customer) {
-      throw new AppError("Delivery customer account not found.", {
-        statusCode: 422,
-        code: ErrorCodes.OTP_NOT_ALLOWED,
-      });
-    }
-
-    await this.mailer.sendPickupOtpEmail({
-      to: customer.email,
-      recipientName: customer.name,
-      deliveryReference: delivery.reference,
-      otp: code,
-    });
-
-    await this.sendPickupOtpSmsIfEnabled({
-      customer,
-      deliveryId: input.deliveryId,
-      deliveryReference: delivery.reference,
-      otp: code,
-      requestId: input.requestId,
-    });
-
-    if (delivery.status === "DRIVER_ASSIGNED" || delivery.status === "BOOKED") {
+    if (previousStatus === "DRIVER_ASSIGNED" || previousStatus === "BOOKED") {
       await this.lifecycle.transition({
         deliveryId: input.deliveryId,
-        currentStatus: delivery.status,
+        currentStatus: previousStatus,
         toStatus: "PICKUP_OTP_PENDING",
         expectedFromStatuses: ["DRIVER_ASSIGNED", "BOOKED"],
         source: "OTP",
@@ -206,47 +188,27 @@ export class OtpService {
       });
     }
 
-    await this.ensureGenerationAllowed(input.deliveryId, "DELIVERY");
-    const code = generateEmailVerificationOtp();
-    const codeHash = await hashOtp(code);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_SECONDS * 1000);
-
-    await this.otpRepo.invalidateActive(input.deliveryId, "DELIVERY");
-    await this.otpRepo.create({
+    const previousStatus = delivery.status;
+    const { code, expiresAt } = await this.createOperationalOtpRecord({
       deliveryId: input.deliveryId,
       type: "DELIVERY",
-      codeHash,
-      expiresAt,
-      maxAttempts: OTP_MAX_ATTEMPTS,
+      contact: delivery.drop,
+      contactRole: "drop",
+      sendSms: async (otp) => {
+        await this.sendDeliveryOtpSms({
+          drop: delivery.drop,
+          deliveryId: input.deliveryId,
+          deliveryReference: delivery.reference,
+          otp,
+          requestId: input.requestId,
+        });
+      },
     });
 
-    const customer = await this.authRepo.findUserById(delivery.customerId);
-    if (!customer) {
-      throw new AppError("Delivery customer account not found.", {
-        statusCode: 422,
-        code: ErrorCodes.OTP_NOT_ALLOWED,
-      });
-    }
-
-    await this.mailer.sendDeliveryOtpEmail({
-      to: customer.email,
-      recipientName: customer.name,
-      deliveryReference: delivery.reference,
-      otp: code,
-    });
-
-    await this.sendDeliveryOtpSmsIfEnabled({
-      customer,
-      deliveryId: input.deliveryId,
-      deliveryReference: delivery.reference,
-      otp: code,
-      requestId: input.requestId,
-    });
-
-    if (delivery.status === "IN_TRANSIT") {
+    if (previousStatus === "IN_TRANSIT") {
       await this.lifecycle.transition({
         deliveryId: input.deliveryId,
-        currentStatus: delivery.status,
+        currentStatus: previousStatus,
         toStatus: "DELIVERY_OTP_PENDING",
         expectedFromStatuses: ["IN_TRANSIT"],
         source: "OTP",
@@ -319,26 +281,128 @@ export class OtpService {
     };
   }
 
-  private async sendPickupOtpSmsIfEnabled(input: {
-    customer: {
-      phoneCountryCode: string | null;
-      phoneNumber: string | null;
+  private async createOperationalOtpRecord(input: {
+    deliveryId: string;
+    type: DeliveryOtpType;
+    contact: {
+      contactPhoneCountryCode: string | null;
+      contactPhoneNumber: string | null;
+    };
+    contactRole: "pickup" | "drop";
+    sendSms: (otp: string) => Promise<void>;
+  }): Promise<{ code: string; expiresAt: Date }> {
+    await this.ensureGenerationAllowed(input.deliveryId, input.type);
+    this.ensureSmsAvailable();
+    this.assertContactPhoneForOtpSms(input.contact, input.contactRole);
+
+    const code = generateEmailVerificationOtp();
+    const codeHash = await hashOtp(code);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_SECONDS * 1000);
+
+    // Previous active OTP is invalidated before send; only the new row is rolled back on definite SMS failure.
+    await this.otpRepo.invalidateActive(input.deliveryId, input.type);
+    const created = await this.otpRepo.create({
+      deliveryId: input.deliveryId,
+      type: input.type,
+      codeHash,
+      expiresAt,
+      maxAttempts: OTP_MAX_ATTEMPTS,
+    });
+
+    try {
+      await input.sendSms(code);
+    } catch (error) {
+      await this.recoverOtpAfterSmsFailure(created, error);
+      throw error;
+    }
+
+    return { code, expiresAt };
+  }
+
+  private ensureSmsAvailable() {
+    if (!this.sms.isEnabled()) {
+      throw new AppError("SMS delivery is not configured.", {
+        statusCode: 503,
+        code: ErrorCodes.SMS_NOT_CONFIGURED,
+      });
+    }
+  }
+
+  private assertContactPhoneForOtpSms(
+    contact: {
+      contactPhoneCountryCode: string | null;
+      contactPhoneNumber: string | null;
+    },
+    role: "pickup" | "drop",
+  ) {
+    const phone = toPhoneResponse(
+      contact.contactPhoneCountryCode,
+      contact.contactPhoneNumber,
+    );
+    if (!phone) {
+      throw new AppError(
+        `A valid ${role} contact phone number is required for SMS verification.`,
+        {
+          statusCode: 422,
+          code: ErrorCodes.OTP_NOT_ALLOWED,
+        },
+      );
+    }
+  }
+
+  private async recoverOtpAfterSmsFailure(
+    created: DeliveryOtpDto,
+    error: unknown,
+  ): Promise<void> {
+    const outcome = readSmsOutcomeFromError(error);
+    if (!shouldInvalidateOtpAfterSmsFailure(outcome)) {
+      if (isAmbiguousSmsOutcome(outcome) || outcome === "ACCEPTED") {
+        logger.warn(
+          {
+            deliveryId: created.deliveryId,
+            type: created.type,
+            smsOutcome: outcome,
+          },
+          "otp.sms_delivery_ambiguous",
+        );
+      }
+      return;
+    }
+
+    try {
+      await this.otpRepo.consume(created.id);
+    } catch (cleanupError) {
+      logger.error(
+        {
+          deliveryId: created.deliveryId,
+          type: created.type,
+          otpRecordId: created.id,
+          err: cleanupError instanceof Error ? cleanupError.message : "cleanup_failed",
+        },
+        "otp.sms_recovery_cleanup_failed",
+      );
+    }
+  }
+
+  private async sendPickupOtpSms(input: {
+    pickup: {
+      contactPhoneCountryCode: string | null;
+      contactPhoneNumber: string | null;
     };
     deliveryId: string;
     deliveryReference: string;
     otp: string;
     requestId: string;
   }) {
-    if (!this.sms.isEnabled() || !this.sms.canSendToCustomer(input.customer)) {
-      return;
-    }
-
     const phone = toPhoneResponse(
-      input.customer.phoneCountryCode,
-      input.customer.phoneNumber,
+      input.pickup.contactPhoneCountryCode,
+      input.pickup.contactPhoneNumber,
     );
     if (!phone) {
-      return;
+      throw new AppError("Pickup contact phone is unavailable.", {
+        statusCode: 422,
+        code: ErrorCodes.OTP_NOT_ALLOWED,
+      });
     }
 
     const driverAssignment = await this.driverRepo.findLatestByDeliveryId(
@@ -366,26 +430,25 @@ export class OtpService {
     });
   }
 
-  private async sendDeliveryOtpSmsIfEnabled(input: {
-    customer: {
-      phoneCountryCode: string | null;
-      phoneNumber: string | null;
+  private async sendDeliveryOtpSms(input: {
+    drop: {
+      contactPhoneCountryCode: string | null;
+      contactPhoneNumber: string | null;
     };
     deliveryId: string;
     deliveryReference: string;
     otp: string;
     requestId: string;
   }) {
-    if (!this.sms.isEnabled() || !this.sms.canSendToCustomer(input.customer)) {
-      return;
-    }
-
     const phone = toPhoneResponse(
-      input.customer.phoneCountryCode,
-      input.customer.phoneNumber,
+      input.drop.contactPhoneCountryCode,
+      input.drop.contactPhoneNumber,
     );
     if (!phone) {
-      return;
+      throw new AppError("Drop contact phone is unavailable.", {
+        statusCode: 422,
+        code: ErrorCodes.OTP_NOT_ALLOWED,
+      });
     }
 
     const driverAssignment = await this.driverRepo.findLatestByDeliveryId(

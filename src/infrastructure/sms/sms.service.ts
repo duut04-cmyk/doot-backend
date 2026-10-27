@@ -1,21 +1,15 @@
-import {
-  env,
-  getMsg91AccountTemplateId,
-  getMsg91DeliveryTemplateId,
-  getMsg91PickupTemplateId,
-  isMsg91Configured,
-} from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { isOperationalSmsEnabled } from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import { toPhoneResponse } from "../../core/phone/phone.js";
-import { Msg91SmsProvider } from "./msg91/msg91.provider.js";
+import type { SmsDeliveryFailureCause } from "./sms-outcome.js";
+import { resolveOperationalSmsRecipientMobile } from "./sms-recipient.js";
+import { resolveOperationalSmsProvider } from "./sms-provider.factory.js";
 import type { SmsProvider } from "./sms.provider.js";
-import type {
-  SendDeliveryOtpSmsInput,
-  SendPickupOtpSmsInput,
-  SmsSendOutcome,
-} from "./sms.types.js";
+import type { SendDeliveryOtpSmsInput, SendPickupOtpSmsInput } from "./sms.types.js";
+
+export type { SmsDeliveryFailureCause } from "./sms-outcome.js";
 
 export interface SmsSender {
   isEnabled(): boolean;
@@ -27,35 +21,13 @@ export interface SmsSender {
   sendDeliveryOtpSms(input: SendDeliveryOtpSmsInput): Promise<void>;
 }
 
-class NoopSmsProvider implements SmsProvider {
-  readonly name = "NOOP";
-
-  async sendMessage(): Promise<{ outcome: SmsSendOutcome }> {
-    return { outcome: "ACCEPTED" };
-  }
-}
-
-function createDefaultProvider(): SmsProvider {
-  if (!isMsg91Configured()) {
-    return new NoopSmsProvider();
-  }
-
-  return new Msg91SmsProvider({
-    baseUrl: env.MSG91_API_BASE_URL!,
-    authKey: env.MSG91_AUTH_KEY!,
-    timeoutMs: env.MSG91_TIMEOUT_MS,
-    senderId: env.MSG91_SENDER_ID!,
-    accountTemplateId: getMsg91AccountTemplateId() ?? "unconfigured",
-    pickupTemplateId: getMsg91PickupTemplateId()!,
-    deliveryTemplateId: getMsg91DeliveryTemplateId()!,
-  });
-}
-
 export class SmsService implements SmsSender {
-  constructor(private readonly provider: SmsProvider = createDefaultProvider()) {}
+  constructor(
+    private readonly provider: SmsProvider = resolveOperationalSmsProvider(),
+  ) {}
 
   isEnabled(): boolean {
-    return env.MSG91_ENABLED === true && isMsg91Configured();
+    return isOperationalSmsEnabled();
   }
 
   canSendToCustomer(input: {
@@ -84,9 +56,13 @@ export class SmsService implements SmsSender {
       });
     }
 
+    const { recipientMobile, overrideApplied } = resolveOperationalSmsRecipientMobile(
+      input.recipientMobile,
+    );
+
     const result = await this.provider.sendMessage({
       notificationType,
-      recipientMobile: input.recipientMobile,
+      recipientMobile,
       correlationId: input.correlationId,
       deliveryReference: input.deliveryReference,
       templateVariables: {
@@ -104,6 +80,11 @@ export class SmsService implements SmsSender {
         deliveryReference: input.deliveryReference,
         outcome: result.outcome,
         providerRequestId: result.providerRequestId,
+        messageSidReturned: Boolean(result.providerRequestId),
+        smsRecipientOverrideApplied: overrideApplied,
+        ...(result.failureDiagnostics
+          ? { smsFailureDiagnostics: result.failureDiagnostics }
+          : {}),
       },
       "sms_notification_attempted",
     );
@@ -113,6 +94,7 @@ export class SmsService implements SmsSender {
       throw new AppError(`Unable to send ${label} verification SMS at this time.`, {
         statusCode: 503,
         code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: result.outcome } satisfies SmsDeliveryFailureCause,
       });
     }
   }

@@ -4,10 +4,7 @@ import { logger } from "../../config/logger.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import { encryptCredential } from "./provider.crypto.js";
-import {
-  toProviderDetailDto,
-  toProviderSummaryDto,
-} from "./provider.mapper.js";
+import { toProviderDetailDto, toProviderSummaryDto } from "./provider.mapper.js";
 import { providerAdapterRegistry } from "./adapters/provider-adapter-registry.js";
 import {
   computeIntegrationStatus,
@@ -84,13 +81,10 @@ function mapVehicleDto(
     id: vehicle.id,
     vehicleType: vehicle.vehicleType,
     enabled: vehicle.enabled,
-    maxWeightKg:
-      vehicle.maxWeightKg == null ? null : Number(vehicle.maxWeightKg),
-    maxLengthCm:
-      vehicle.maxLengthCm == null ? null : Number(vehicle.maxLengthCm),
+    maxWeightKg: vehicle.maxWeightKg == null ? null : Number(vehicle.maxWeightKg),
+    maxLengthCm: vehicle.maxLengthCm == null ? null : Number(vehicle.maxLengthCm),
     maxWidthCm: vehicle.maxWidthCm == null ? null : Number(vehicle.maxWidthCm),
-    maxHeightCm:
-      vehicle.maxHeightCm == null ? null : Number(vehicle.maxHeightCm),
+    maxHeightCm: vehicle.maxHeightCm == null ? null : Number(vehicle.maxHeightCm),
     createdAt: vehicle.createdAt.toISOString(),
     updatedAt: vehicle.updatedAt.toISOString(),
   };
@@ -113,9 +107,7 @@ function mapServiceDto(
 }
 
 export class ProviderService {
-  constructor(
-    private readonly repository: IProviderRepository = providerRepository,
-  ) {}
+  constructor(private readonly repository: IProviderRepository = providerRepository) {}
 
   async createProvider(input: {
     body: CreateProviderBody;
@@ -158,10 +150,7 @@ export class ProviderService {
       },
     });
 
-    logger.info(
-      { providerId: refreshed.id, code: refreshed.code },
-      "provider_created",
-    );
+    logger.info({ providerId: refreshed.id, code: refreshed.code }, "provider_created");
 
     return { success: true, data: toProviderDetailDto(refreshed) };
   }
@@ -174,7 +163,9 @@ export class ProviderService {
     };
   }
 
-  async getProvider(providerId: string): Promise<{ success: true; data: ProviderDetailDto }> {
+  async getProvider(
+    providerId: string,
+  ): Promise<{ success: true; data: ProviderDetailDto }> {
     const provider = await this.requireProvider(providerId);
     return { success: true, data: toProviderDetailDto(provider) };
   }
@@ -225,22 +216,12 @@ export class ProviderService {
       updateData.priority = input.body.priority;
     }
 
-    if (input.body.enabled !== undefined) {
-      changes.enabled = { from: existing.enabled, to: input.body.enabled };
-      updateData.enabled = input.body.enabled;
-      updateData.status = input.body.enabled ? "ACTIVE" : "INACTIVE";
-    }
-
     await this.repository.withTransaction(async (tx) => {
       if (Object.keys(updateData).length > 0) {
         await this.repository.updateProvider(input.providerId, updateData, tx);
       }
       if (input.body.settings) {
-        await this.repository.updateSettings(
-          input.providerId,
-          input.body.settings,
-          tx,
-        );
+        await this.repository.updateSettings(input.providerId, input.body.settings, tx);
         changes.settings = Object.keys(input.body.settings);
       }
       if (input.body.packageLimits !== undefined) {
@@ -249,21 +230,12 @@ export class ProviderService {
           normalizePackageLimits(input.body.packageLimits),
           tx,
         );
-        changes.packageLimits = input.body.packageLimits === null ? "cleared" : "updated";
+        changes.packageLimits =
+          input.body.packageLimits === null ? "cleared" : "updated";
       }
     });
 
     const refreshed = await this.refreshIntegrationStatus(input.providerId);
-
-    if (input.body.enabled !== undefined && input.body.enabled !== existing.enabled) {
-      await this.audit({
-        ...input.audit,
-        action: input.body.enabled ? "PROVIDER_ENABLED" : "PROVIDER_DISABLED",
-        resourceType: "PROVIDER",
-        resourceId: refreshed.id,
-        metadata: { enabled: input.body.enabled },
-      });
-    }
 
     await this.audit({
       ...input.audit,
@@ -331,9 +303,7 @@ export class ProviderService {
     const fields = Object.entries(input.body).filter(
       (entry): entry is [ProviderCredentialField, string] =>
         entry[1] !== undefined &&
-        PROVIDER_CREDENTIAL_FIELD_VALUES.includes(
-          entry[0] as ProviderCredentialField,
-        ),
+        PROVIDER_CREDENTIAL_FIELD_VALUES.includes(entry[0] as ProviderCredentialField),
     );
 
     if (fields.length === 0) {
@@ -346,11 +316,7 @@ export class ProviderService {
     const fieldNames = fields.map(([name]) => name);
 
     await this.repository.withTransaction(async (tx) => {
-      await this.repository.deactivateCredentials(
-        input.providerId,
-        fieldNames,
-        tx,
-      );
+      await this.repository.deactivateCredentials(input.providerId, fieldNames, tx);
       for (const [fieldName, value] of fields) {
         const encrypted = encryptCredential(value);
         await this.repository.createCredential(
