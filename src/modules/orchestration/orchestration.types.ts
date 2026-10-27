@@ -176,3 +176,98 @@ export type AdminOrchestrationResultDto = CustomerOrchestrationResultDto & {
     evaluations: AdminEvaluationDto[];
   };
 };
+
+export type OrchestrationListFilters = {
+  from?: Date;
+  to?: Date;
+  reference?: string;
+  deliveryId?: string;
+  orchestrationStatus?: OrchestrationRequestStatus;
+  deliveryStatus?: import("@prisma/client").DeliveryStatus;
+  bookingStatus?: import("@prisma/client").ProviderBookingStatus;
+};
+
+export type OrchestrationListDeliverySnapshot = {
+  id: string;
+  reference: string;
+  status: import("@prisma/client").DeliveryStatus;
+  pickupAddressText: string;
+  dropAddressText: string;
+};
+
+export type OrchestrationListBookingSnapshot = {
+  status: import("@prisma/client").ProviderBookingStatus;
+  providerReference: string | null;
+  providerOrderId: string | null;
+};
+
+export type OrchestrationListAggregate = {
+  request: OrchestrationRequestDto;
+  delivery: OrchestrationListDeliverySnapshot | null;
+  booking: OrchestrationListBookingSnapshot | null;
+};
+
+export type AdminOrchestrationListItemDto = {
+  orchestrationId: string;
+  attemptNumber: number;
+  orchestrationStatus: OrchestrationRequestStatus;
+  failureReason: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+  durationMs: number | null;
+  deliveryId: string;
+  deliveryReference: string;
+  deliveryStatus: import("@prisma/client").DeliveryStatus;
+  pickupAddressText: string;
+  dropAddressText: string;
+  evaluationCount: number;
+  eligibleCount: number;
+  availableOptionCount: number;
+  selectedProviderCode: string | null;
+  selectedServiceCode: string | null;
+  selectedScore: number | null;
+  selectionReason: string | null;
+  booking: OrchestrationListBookingSnapshot | null;
+};
+
+export type PaginatedOrchestrationsDto = {
+  items: AdminOrchestrationListItemDto[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type ListOrchestrationsResult = {
+  success: true;
+  data: PaginatedOrchestrationsDto;
+};
+
+export type OrchestrationListLookup = {
+  findDeliveryById(
+    deliveryId: string,
+  ): Promise<OrchestrationListDeliverySnapshot | null>;
+  findBookingByOrchestrationRequestId(
+    orchestrationRequestId: string,
+  ): Promise<OrchestrationListBookingSnapshot | null>;
+};
+
+export type AdminOrchestrationRunDetailDto = AdminOrchestrationResultDto & {
+  durationMs: number | null;
+  delivery: {
+    reference: string;
+    pickupAddressText: string;
+    dropAddressText: string;
+  };
+  booking: OrchestrationListBookingSnapshot | null;
+  orchestration: AdminOrchestrationResultDto["orchestration"] & {
+    startedAt: string;
+    createdAt: string;
+  };
+};
+
+export type GetAdminOrchestrationRunResult = {
+  success: true;
+  data: AdminOrchestrationRunDetailDto;
+};

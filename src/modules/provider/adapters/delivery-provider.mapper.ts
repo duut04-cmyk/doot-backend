@@ -79,6 +79,7 @@ export function toBookingRequest(
     serviceCode?: string;
     providerQuoteId?: string | null;
     idempotencyKey?: string;
+    providerMetadata?: Record<string, unknown>;
   },
 ): BookingRequest {
   return {
@@ -86,5 +87,6 @@ export function toBookingRequest(
     serviceCode: options?.serviceCode,
     providerQuoteId: options?.providerQuoteId ?? null,
     idempotencyKey: options?.idempotencyKey,
+    providerMetadata: options?.providerMetadata,
   };
 }

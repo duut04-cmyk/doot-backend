@@ -3,22 +3,22 @@ import { ErrorCodes } from "../src/core/errors/error-codes.js";
 import { AppError } from "../src/core/errors/app-error.js";
 import { DeliveryLifecycleService } from "../src/modules/delivery/delivery-lifecycle.service.js";
 import { OtpService } from "../src/modules/otp/otp.service.js";
-import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
-import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
 import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
 import {
+  getActiveOtp,
   seedCustomerUser,
   seedDriverAssignedDelivery,
   seedInTransitDelivery,
 } from "./helpers/otp-test-helpers.js";
+import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
-import { createNoopSmsSender } from "./helpers/sms-test-helpers.js";
+import { createOtpTestSmsSender } from "./helpers/sms-test-helpers.js";
 
-describe("OtpService SMS dual-send", () => {
+describe("OtpService SMS-only notifications", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
   let otpRepo: InMemoryOtpRepository;
   let bookingRepo: InMemoryBookingRepository;
@@ -26,8 +26,6 @@ describe("OtpService SMS dual-send", () => {
   let providerRepo: InMemoryProviderRepository;
   let authRepo: InMemoryAuthRepository;
   let driverRepo: InMemoryDriverRepository;
-  let sendPickupOtpEmail: ReturnType<typeof vi.fn>;
-  let sendDeliveryOtpEmail: ReturnType<typeof vi.fn>;
   let sendPickupOtpSms: ReturnType<typeof vi.fn>;
   let sendDeliveryOtpSms: ReturnType<typeof vi.fn>;
   let isSmsEnabled: ReturnType<typeof vi.fn>;
@@ -50,8 +48,6 @@ describe("OtpService SMS dual-send", () => {
     authRepo = new InMemoryAuthRepository();
     driverRepo = new InMemoryDriverRepository();
     seedCustomerUser(authRepo, { id: customerId });
-    sendPickupOtpEmail = vi.fn(async () => undefined);
-    sendDeliveryOtpEmail = vi.fn(async () => undefined);
     sendPickupOtpSms = vi.fn(async () => undefined);
     sendDeliveryOtpSms = vi.fn(async () => undefined);
     isSmsEnabled = vi.fn(() => true);
@@ -62,11 +58,8 @@ describe("OtpService SMS dual-send", () => {
       deliveryRepo,
       otpRepo,
       new DeliveryLifecycleService(deliveryRepo),
-      authRepo,
-      createNoopEmailSender({ sendPickupOtpEmail, sendDeliveryOtpEmail }),
-      createNoopSmsSender({
+      createOtpTestSmsSender({
         isEnabled: isSmsEnabled,
-        canSendToCustomer: () => true,
         sendPickupOtpSms,
         sendDeliveryOtpSms,
       }),
@@ -74,7 +67,7 @@ describe("OtpService SMS dual-send", () => {
     );
   }
 
-  it("dual-sends pickup OTP via email and SMS when SMS is enabled", async () => {
+  it("sends pickup OTP SMS to the pickup contact phone", async () => {
     const service = createService();
     const seeded = await seedDriverAssignedDelivery(repoBundle());
     await driverRepo.upsertAssignment({
@@ -102,10 +95,10 @@ describe("OtpService SMS dual-send", () => {
       requestId: "req-sms-pickup",
     });
 
-    expect(sendPickupOtpEmail).toHaveBeenCalledOnce();
+    expect(sendPickupOtpSms).toHaveBeenCalledOnce();
     expect(sendPickupOtpSms).toHaveBeenCalledWith(
       expect.objectContaining({
-        recipientMobile: "919876543210",
+        recipientMobile: "919888877776",
         deliveryReference: seeded.deliveryReference,
         otp: result.data._testOtp,
         templateVariables: expect.objectContaining({
@@ -119,27 +112,30 @@ describe("OtpService SMS dual-send", () => {
     );
   });
 
-  it("keeps email-only behavior when SMS is disabled", async () => {
+  it("rejects pickup OTP generation when SMS is disabled", async () => {
     isSmsEnabled.mockReturnValue(false);
     const service = createService();
     const seeded = await seedDriverAssignedDelivery(repoBundle());
 
-    await service.generatePickupOtp({
-      deliveryId: seeded.deliveryId,
-      userId: customerId,
-      role: "CUSTOMER",
-      requestId: "req-email-only",
-    });
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-sms-disabled",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.SMS_NOT_CONFIGURED });
 
-    expect(sendPickupOtpEmail).toHaveBeenCalledOnce();
     expect(sendPickupOtpSms).not.toHaveBeenCalled();
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeUndefined();
   });
 
-  it("returns SMS_DELIVERY_FAILED when SMS fails after email succeeds", async () => {
+  it("returns SMS_DELIVERY_FAILED and rolls back the new OTP on clear SMS failure", async () => {
     sendPickupOtpSms.mockRejectedValue(
       new AppError("Unable to send pickup verification SMS at this time.", {
         statusCode: 503,
         code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: "FAILED" },
       }),
     );
     const service = createService();
@@ -154,20 +150,91 @@ describe("OtpService SMS dual-send", () => {
       }),
     ).rejects.toMatchObject({ code: ErrorCodes.SMS_DELIVERY_FAILED });
 
-    expect(sendPickupOtpEmail).toHaveBeenCalledOnce();
     expect((await deliveryRepo.findById(seeded.deliveryId))?.status).toBe(
       "DRIVER_ASSIGNED",
     );
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeUndefined();
   });
 
-  it("uses the delivery template for delivery OTP SMS", async () => {
+  it("keeps the OTP active when SMS delivery outcome is UNKNOWN", async () => {
+    sendPickupOtpSms.mockRejectedValue(
+      new AppError("Unable to send pickup verification SMS at this time.", {
+        statusCode: 503,
+        code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: "UNKNOWN" },
+      }),
+    );
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-sms-unknown",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.SMS_DELIVERY_FAILED });
+
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeDefined();
+  });
+
+  it("keeps the OTP active for an unsupported runtime smsOutcome string", async () => {
+    sendPickupOtpSms.mockRejectedValue(
+      new AppError("Unable to send pickup verification SMS at this time.", {
+        statusCode: 503,
+        code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: "NOT_VALID" },
+      }),
+    );
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-bogus-outcome",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.SMS_DELIVERY_FAILED });
+
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeDefined();
+  });
+
+  it("keeps the OTP active when SMS delivery outcome is ambiguous (timeout)", async () => {
+    sendPickupOtpSms.mockRejectedValue(
+      new AppError("Unable to send pickup verification SMS at this time.", {
+        statusCode: 503,
+        code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: "TIMEOUT" },
+      }),
+    );
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-sms-timeout",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.SMS_DELIVERY_FAILED });
+
+    expect((await deliveryRepo.findById(seeded.deliveryId))?.status).toBe(
+      "DRIVER_ASSIGNED",
+    );
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeDefined();
+  });
+
+  it("sends delivery OTP SMS to the drop contact phone", async () => {
     const service = createService();
     const seeded = await seedInTransitDelivery({
       service,
       ...repoBundle(),
     });
 
-    sendPickupOtpEmail.mockClear();
     sendPickupOtpSms.mockClear();
 
     await service.generateDeliveryOtp({
@@ -177,13 +244,74 @@ describe("OtpService SMS dual-send", () => {
       requestId: "req-sms-delivery",
     });
 
-    expect(sendDeliveryOtpEmail).toHaveBeenCalledOnce();
+    expect(sendDeliveryOtpSms).toHaveBeenCalledOnce();
     expect(sendDeliveryOtpSms).toHaveBeenCalledWith(
       expect.objectContaining({
+        recipientMobile: "919811122233",
         templateVariables: expect.objectContaining({
           event_type: "DELIVERY",
         }),
       }),
+    );
+  });
+
+  it("rejects pickup OTP when pickup contact phone is missing", async () => {
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    delivery!.pickup.contactPhoneNumber = "";
+
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-missing-pickup-phone",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.OTP_NOT_ALLOWED });
+
+    expect(sendPickupOtpSms).not.toHaveBeenCalled();
+    expect(getActiveOtp(otpRepo, seeded.deliveryId, "PICKUP")).toBeUndefined();
+  });
+
+  it("preserves the SMS error when OTP cleanup consume fails", async () => {
+    sendPickupOtpSms.mockRejectedValue(
+      new AppError("Unable to send pickup verification SMS at this time.", {
+        statusCode: 503,
+        code: ErrorCodes.SMS_DELIVERY_FAILED,
+        cause: { smsOutcome: "FAILED" },
+      }),
+    );
+    vi.spyOn(otpRepo, "consume").mockRejectedValueOnce(new Error("consume failed"));
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+
+    await expect(
+      service.generatePickupOtp({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-cleanup-fail",
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.SMS_DELIVERY_FAILED });
+  });
+
+  it("does not fall back to the customer account phone for pickup SMS", async () => {
+    const service = createService();
+    const seeded = await seedDriverAssignedDelivery(repoBundle());
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    delivery!.pickup.contactPhoneCountryCode = "+91";
+    delivery!.pickup.contactPhoneNumber = "9111223344";
+
+    await service.generatePickupOtp({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-pickup-contact-only",
+    });
+
+    expect(sendPickupOtpSms).toHaveBeenCalledWith(
+      expect.objectContaining({ recipientMobile: "919111223344" }),
     );
   });
 });

@@ -23,7 +23,7 @@ export const settingsSwaggerPaths = {
       tags: ["Admin Settings"],
       summary: "Get platform settings snapshot",
       description:
-        "Requires ADMIN role. Read-only view of runtime platform configuration, operational policies, and feature flags. Values reflect environment variables and code constants — not editable via API.",
+        "Requires ADMIN role. View of runtime platform configuration, operational policies, and feature flags. Booking quote policies may be overridden in the database via PATCH /api/v1/admin/settings/policies.",
       security: adminSecurity,
       responses: {
         200: {
@@ -72,6 +72,34 @@ export const settingsSwaggerPaths = {
         },
         403: {
           description: "Forbidden — ADMIN role required",
+          content: { "application/json": { schema: adminErrorSchema } },
+        },
+      },
+    },
+  },
+  "/api/v1/admin/settings/policies": {
+    patch: {
+      tags: ["Admin Settings"],
+      summary: "Update allowlisted booking runtime policies",
+      description:
+        "Requires ADMIN role. Updates persisted booking quote max age and price tolerance with optimistic concurrency (expectedVersions).",
+      security: adminSecurity,
+      responses: {
+        200: { description: "Updated booking runtime policies" },
+        400: {
+          description: "Validation error",
+          content: { "application/json": { schema: adminErrorSchema } },
+        },
+        401: {
+          description: "Unauthorized",
+          content: { "application/json": { schema: adminErrorSchema } },
+        },
+        403: {
+          description: "Forbidden — ADMIN role required",
+          content: { "application/json": { schema: adminErrorSchema } },
+        },
+        409: {
+          description: "Version conflict",
           content: { "application/json": { schema: adminErrorSchema } },
         },
       },

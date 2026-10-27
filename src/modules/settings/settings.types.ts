@@ -11,6 +11,10 @@ export type SettingsBookingPoliciesDto = {
   priceTolerancePercent: number;
 };
 
+export type SettingsPricingPoliciesDto = {
+  platformServiceFeePercent: number;
+};
+
 export type SettingsAuthPoliciesDto = {
   jwtAccessExpiresIn: string;
   refreshTokenExpiresInDays: number;
@@ -39,6 +43,7 @@ export type SettingsOrchestrationPoliciesDto = {
 
 export type SettingsPoliciesDto = {
   booking: SettingsBookingPoliciesDto;
+  pricing: SettingsPricingPoliciesDto;
   auth: SettingsAuthPoliciesDto;
   deliveryOtp: SettingsDeliveryOtpPoliciesDto;
   orchestration: SettingsOrchestrationPoliciesDto;
@@ -49,9 +54,48 @@ export type SettingsFlagsDto = {
   developmentMode: boolean;
 };
 
+export type RuntimeSettingMetaDto = {
+  value: number;
+  source: "env" | "database";
+  version: number;
+  restartRequired: false;
+  invalidStoredOverride?: true;
+  storageUnavailable?: true;
+};
+
+export type SettingsRuntimeBookingDto = {
+  quoteMaxAgeSeconds: RuntimeSettingMetaDto;
+  priceTolerancePercent: RuntimeSettingMetaDto;
+};
+
+export type SettingsRuntimePricingDto = {
+  platformServiceFeePercent: RuntimeSettingMetaDto;
+};
+
+export type SettingsRuntimeDto = {
+  booking: SettingsRuntimeBookingDto;
+  pricing: SettingsRuntimePricingDto;
+};
+
+export type PatchBookingPoliciesResponseDto = {
+  booking: SettingsRuntimeBookingDto;
+  pricing: SettingsRuntimePricingDto;
+  audit: {
+    outcome: "updated" | "no_change";
+    changes: Array<{
+      key: string;
+      previousValue: number;
+      newValue: number;
+      previousVersion: number;
+      newVersion: number;
+    }>;
+  };
+};
+
 export type SettingsSnapshotDto = {
   platform: SettingsPlatformDto;
   policies: SettingsPoliciesDto;
   flags: SettingsFlagsDto;
+  runtime: SettingsRuntimeDto;
   checkedAt: string;
 };

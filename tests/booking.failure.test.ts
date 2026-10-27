@@ -160,31 +160,29 @@ describe("Booking failure resilience", () => {
   });
 
   it("blocks duplicate confirm while booking is in progress", async () => {
-    configureExecuteMock(
-      executeMock,
-      async () =>
-        new Promise((resolve) => {
-          setTimeout(
-            () =>
-              resolve({
-                success: true,
-                outcome: "BOOKED",
-                providerBookingId: "PO-SLOW",
-                providerReference: "REF-SLOW",
-                status: "CONFIRMED",
-                bookedAt: new Date().toISOString(),
-                estimatedPickupAt: null,
-                estimatedDeliveryAt: null,
-                trackingUrl: null,
-                driver: null,
-                service: null,
-                reason: null,
-                amount: { amount: 150, currency: "INR" },
-              }),
-            50,
-          );
-        }),
-    );
+    let releaseAdapter: () => void = () => undefined;
+    const adapterBlocked = new Promise<void>((resolve) => {
+      releaseAdapter = resolve;
+    });
+
+    configureExecuteMock(executeMock, async () => {
+      await adapterBlocked;
+      return {
+        success: true,
+        outcome: "BOOKED",
+        providerBookingId: "PO-SLOW",
+        providerReference: "REF-SLOW",
+        status: "CONFIRMED",
+        bookedAt: new Date().toISOString(),
+        estimatedPickupAt: null,
+        estimatedDeliveryAt: null,
+        trackingUrl: null,
+        driver: null,
+        service: null,
+        reason: null,
+        amount: { amount: 150, currency: "INR" },
+      };
+    });
 
     const seeded = await seedOptionReadyDelivery({
       deliveryRepo,
@@ -203,6 +201,11 @@ describe("Booking failure resilience", () => {
       requestHash: hashConfirmRequest(),
     });
 
+    await vi.waitFor(async () => {
+      const active = await bookingRepo.findActiveByDeliveryId(seeded.deliveryId);
+      expect(active?.status).toBe("BOOKING");
+    });
+
     await expect(
       service.confirm({
         deliveryId: seeded.deliveryId,
@@ -215,6 +218,7 @@ describe("Booking failure resilience", () => {
       code: ErrorCodes.BOOKING_IN_PROGRESS,
     });
 
+    releaseAdapter();
     await first;
   });
 });

@@ -4,6 +4,7 @@ import { createAuthRouter } from "../modules/auth/auth.routes.js";
 import type { AuthController } from "../modules/auth/auth.controller.js";
 import { createDeliveryRouter } from "../modules/delivery/delivery.routes.js";
 import type { DeliveryController } from "../modules/delivery/delivery.controller.js";
+import { createAdminDeliveryListRouter } from "../modules/delivery/delivery-admin-list.routes.js";
 import { createAdminDeliveryHistoryRouter } from "../modules/delivery/delivery-history.routes.js";
 import { createAdminOperationalRouter } from "../modules/operations/operational.routes.js";
 import { createCustomerAdminRouter } from "../modules/customer/customer.routes.js";
@@ -14,6 +15,8 @@ import { createSettingsAdminRouter } from "../modules/settings/settings.routes.j
 import type { SettingsController } from "../modules/settings/settings.controller.js";
 import { createProviderAdminRouter } from "../modules/provider/provider.routes.js";
 import type { ProviderController } from "../modules/provider/provider.controller.js";
+import { createAdminOrchestrationListRouter } from "../modules/orchestration/orchestration-admin-list.routes.js";
+import { createAdminReportingRouter } from "../modules/admin-reporting/reporting.routes.js";
 import { createTestSmsRouter } from "../modules/test-sms/test-sms.routes.js";
 import { createPaymentWebhookRouter } from "../modules/payment/webhook/payment-webhook.routes.js";
 
@@ -59,9 +62,14 @@ export function createApiV1Router(options?: {
 
   router.use(
     "/admin/deliveries",
+    createAdminDeliveryListRouter(),
     createAdminOperationalRouter(),
     createAdminDeliveryHistoryRouter(),
   );
+
+  router.use("/admin/orchestrations", createAdminOrchestrationListRouter());
+
+  router.use("/admin/reporting", createAdminReportingRouter());
 
   if (env.NODE_ENV !== "production") {
     router.use("/test", createTestSmsRouter());

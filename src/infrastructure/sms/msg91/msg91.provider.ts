@@ -79,9 +79,13 @@ function resolveTemplateId(
   }
 }
 
+/**
+ * Maps MSG91 flow `type` to send outcome. In-repo success fixtures use `type: "success"`.
+ * HTTP 200 without a recognizable `type` is ambiguous — not treated as confirmed acceptance.
+ */
 function normalizeAcceptedOutcome(type: string | undefined): SmsSendOutcome {
-  if (!type) {
-    return "ACCEPTED";
+  if (!type || type.trim() === "") {
+    return "UNKNOWN";
   }
 
   const normalized = type.toLowerCase();

@@ -124,12 +124,12 @@ export const updateProviderSchema = z
       .nullable()
       .optional(),
     environment: z.enum(["SANDBOX", "LIVE"]).optional(),
-    enabled: z.boolean().optional(),
     orchestrationEnabled: z.boolean().optional(),
     priority: z.number().int().min(MIN_PRIORITY).max(MAX_PRIORITY).optional(),
     settings: settingsSchema.optional(),
     packageLimits: packageLimitsSchema.nullable().optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
   });
@@ -151,10 +151,9 @@ export const upsertCredentialsSchema = z
     ACCOUNT_ID: z.string().min(1).max(128).optional(),
     WEBHOOK_SECRET: z.string().min(1).max(512).optional(),
   })
-  .refine(
-    (data) => Object.values(data).some((value) => value !== undefined),
-    { message: "At least one credential field is required" },
-  );
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: "At least one credential field is required",
+  });
 
 export const replaceCapabilitiesSchema = z.object({
   capabilities: z.array(z.enum(PROVIDER_CAPABILITY_VALUES)),

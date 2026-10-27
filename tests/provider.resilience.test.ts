@@ -61,6 +61,29 @@ describe("Provider resilience", () => {
       });
     });
 
+    it("maps HTTP 498 edge access denial to non-retryable PROVIDER_SERVICE_UNAVAILABLE", async () => {
+      const client = new ProviderHttpClient(
+        vi.fn().mockResolvedValue(
+          new Response("Access Denied", {
+            status: 498,
+            headers: { server: "awselb/2.0" },
+          }),
+        ) as typeof fetch,
+      );
+
+      await expect(
+        client.request({
+          config: runtimeConfig(),
+          operation: "healthCheck",
+          requestId: "req-http-498",
+          request: { method: "POST", path: "/v1/external/auth/login" },
+        }),
+      ).rejects.toMatchObject({
+        category: "PROVIDER_SERVICE_UNAVAILABLE",
+        retryable: false,
+      });
+    });
+
     it("maps network failures to PROVIDER_UNKNOWN_ERROR", async () => {
       const client = new ProviderHttpClient(
         vi.fn().mockRejectedValue(new Error("network down")) as typeof fetch,

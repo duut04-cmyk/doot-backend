@@ -18,7 +18,7 @@ import { initializeProviderAdapters } from "../src/modules/provider/adapters/boo
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { TrackingController } from "../src/modules/tracking/tracking.controller.js";
 import { createOperationalServices } from "./helpers/operational-refresh-test-helpers.js";
-import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
+import { createOtpTestSmsSender } from "./helpers/sms-test-helpers.js";
 import { seedOptionReadyDelivery } from "./helpers/booking-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
@@ -104,8 +104,8 @@ describe("Cancellation HTTP", () => {
         deliveryRepo,
         otpRepo,
         lifecycle,
-        authRepo,
-        createNoopEmailSender(),
+        createOtpTestSmsSender(),
+        driverRepo,
       ),
     );
     const trackingController = new TrackingController(trackingService);
@@ -203,8 +203,8 @@ describe("Cancellation HTTP", () => {
       deliveryRepo,
       otpRepo,
       new DeliveryLifecycleService(deliveryRepo),
-      authRepo,
-      createNoopEmailSender(),
+      createOtpTestSmsSender(),
+      driverRepo,
     );
     const seeded = await seedInTransitDelivery({
       service: otpService,

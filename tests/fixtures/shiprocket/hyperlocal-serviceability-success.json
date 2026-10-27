@@ -1,0 +1,20 @@
+{
+  "status": true,
+  "message": "Serviceability fetched",
+  "data": [
+    {
+      "courier_name": "Shiprocket Quick",
+      "courier_company_id": 101,
+      "rate_id": "hl-rate-101",
+      "rates": 89.5,
+      "etd": "45 mins"
+    },
+    {
+      "courier_name": "Express Local",
+      "courier_company_id": 102,
+      "rate_id": "hl-rate-102",
+      "rates": 72,
+      "eta": 35
+    }
+  ]
+}

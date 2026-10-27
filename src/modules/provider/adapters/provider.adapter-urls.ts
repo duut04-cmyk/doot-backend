@@ -14,6 +14,10 @@ const TRUSTED_PROVIDER_BASE_URLS: Record<
     SANDBOX: "https://mock-provider.test/sandbox",
     LIVE: "https://mock-provider.test/live",
   },
+  SHIPROCKET: {
+    SANDBOX: "https://api-sandbox.shiprocket.in",
+    LIVE: "https://apiv2.shiprocket.in",
+  },
 };
 
 export function resolveTrustedProviderBaseUrl(

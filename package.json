@@ -26,6 +26,8 @@
     "cert:mock-lifecycle": "tsx scripts/mock-customer-lifecycle-certification.ts",
     "cert:payment-phase1": "tsx scripts/payment-domain-phase1-verification.ts",
     "cert:cashfree-sandbox": "tsx scripts/cashfree-sandbox-certification.ts",
+    "probe:shiprocket-sandbox": "tsx scripts/shiprocket-sandbox-serviceability-probe.ts",
+    "smoke:twilio-trial-template": "tsx scripts/twilio-trial-template-smoke.ts",
     "cert:browser-gate": "tsx --tsconfig ../customer-platform/tsconfig.json scripts/customer-browser-gate-verification.ts"
   },
   "dependencies": {
@@ -46,6 +48,7 @@
     "resend": "^6.28.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
+    "twilio": "^5.13.1",
     "zod": "^4.6.5"
   },
   "lint-staged": {

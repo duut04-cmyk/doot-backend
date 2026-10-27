@@ -75,18 +75,20 @@ export const operationalSwaggerPaths = {
       tags: ["Deliveries"],
       summary: "Generate pickup OTP",
       description:
-        "Generates a pickup verification code, emails it to the delivery owner, and when MSG91 is enabled also sends an SMS to the customer's phone. Eligible deliveries move to PICKUP_OTP_PENDING. The OTP is never returned in the API response.",
+        "Generates a pickup verification code and sends it by SMS to the pickup contact phone via the configured SMS provider (MSG91 or Twilio). Eligible deliveries move to PICKUP_OTP_PENDING only after SMS is accepted. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
         200: {
-          description:
-            "Pickup OTP generated; email sent and SMS sent when MSG91 is enabled and the customer has a phone number",
+          description: "Pickup OTP generated and SMS sent to the pickup contact",
         },
         503: {
-          description: "Pickup OTP notification failed (email or SMS delivery failure)",
+          description: "SMS not configured or pickup OTP SMS delivery failed",
         },
-        422: { description: "OTP not allowed for current status" },
+        422: {
+          description:
+            "OTP not allowed for current status, or pickup contact phone missing/invalid",
+        },
         429: { description: "OTP generation cooldown" },
       },
     },
@@ -120,19 +122,20 @@ export const operationalSwaggerPaths = {
       tags: ["Deliveries"],
       summary: "Generate delivery OTP",
       description:
-        "Generates a delivery verification code, emails it to the delivery owner, and when MSG91 is enabled also sends an SMS to the customer's phone. Eligible deliveries move to DELIVERY_OTP_PENDING. The OTP is never returned in the API response.",
+        "Generates a delivery verification code and sends it by SMS to the drop contact phone via the configured SMS provider (MSG91 or Twilio). Eligible deliveries move to DELIVERY_OTP_PENDING only after SMS is accepted. The OTP is never returned in the API response.",
       security: bearerSecurity,
       parameters: [deliveryIdParam],
       responses: {
         200: {
-          description:
-            "Delivery OTP generated; email sent and SMS sent when MSG91 is enabled and the customer has a phone number",
+          description: "Delivery OTP generated and SMS sent to the drop contact",
         },
         503: {
-          description:
-            "Delivery OTP notification failed (email or SMS delivery failure)",
+          description: "SMS not configured or delivery OTP SMS delivery failed",
         },
-        422: { description: "OTP not allowed for current status" },
+        422: {
+          description:
+            "OTP not allowed for current status, or drop contact phone missing/invalid",
+        },
         429: { description: "OTP generation cooldown" },
       },
     },

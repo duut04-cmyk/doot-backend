@@ -58,6 +58,7 @@ const APPLICATION_MODELS = [
   "ProviderSettings",
   "ProviderPackageLimits",
   "Provider",
+  "PlatformRuntimeSetting",
   "AdminAuditLog",
   "OAuthAccount",
   "EmailVerificationOtp",
@@ -71,9 +72,7 @@ export type ApplicationModelName = (typeof APPLICATION_MODELS)[number];
 
 export const DELETION_ORDER: ApplicationModelName[] = [...APPLICATION_MODELS];
 
-export function assertCleanupAllowed(
-  env: NodeJS.ProcessEnv = process.env,
-): void {
+export function assertCleanupAllowed(env: NodeJS.ProcessEnv = process.env): void {
   if (env.ALLOW_DATABASE_DATA_RESET !== "true") {
     throw new CleanupRefusedError(
       "Refused: set ALLOW_DATABASE_DATA_RESET=true to delete application data.",
@@ -174,6 +173,8 @@ async function countModel(
       return client.providerPackageLimits.count();
     case "Provider":
       return client.provider.count();
+    case "PlatformRuntimeSetting":
+      return client.platformRuntimeSetting.count();
     case "AdminAuditLog":
       return client.adminAuditLog.count();
     case "OAuthAccount":
@@ -260,6 +261,8 @@ async function deleteModel(
       return (await tx.providerPackageLimits.deleteMany()).count;
     case "Provider":
       return (await tx.provider.deleteMany()).count;
+    case "PlatformRuntimeSetting":
+      return (await tx.platformRuntimeSetting.deleteMany()).count;
     case "AdminAuditLog":
       return (await tx.adminAuditLog.deleteMany()).count;
     case "OAuthAccount":

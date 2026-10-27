@@ -103,6 +103,7 @@ describe("deleteApplicationData", () => {
       providerSettings: makeDelegate("ProviderSettings"),
       providerPackageLimits: makeDelegate("ProviderPackageLimits"),
       provider: makeDelegate("Provider"),
+      platformRuntimeSetting: makeDelegate("PlatformRuntimeSetting"),
       adminAuditLog: makeDelegate("AdminAuditLog"),
       oAuthAccount: makeDelegate("OAuthAccount"),
       emailVerificationOtp: makeDelegate("EmailVerificationOtp"),

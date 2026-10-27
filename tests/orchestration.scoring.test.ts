@@ -22,21 +22,37 @@ describe("Orchestration scoring", () => {
     const scored = scoreEligibleEvaluations([
       {
         evaluationId: "a",
+        outcomeIndex: 0,
         providerId: "1",
         providerCode: "A",
         providerPriority: 10,
         quote: quote(200),
-        availability: { known: false, available: false, availableDriverCount: null, drivers: null, checkedAt: new Date().toISOString(), reason: null },
+        availability: {
+          known: false,
+          available: false,
+          availableDriverCount: null,
+          drivers: null,
+          checkedAt: new Date().toISOString(),
+          reason: null,
+        },
         estimatedDeliveryAt: null,
         estimatedDeliveryMinutes: 60,
       },
       {
         evaluationId: "b",
+        outcomeIndex: 1,
         providerId: "2",
         providerCode: "B",
         providerPriority: 20,
         quote: quote(100),
-        availability: { known: false, available: false, availableDriverCount: null, drivers: null, checkedAt: new Date().toISOString(), reason: null },
+        availability: {
+          known: false,
+          available: false,
+          availableDriverCount: null,
+          drivers: null,
+          checkedAt: new Date().toISOString(),
+          reason: null,
+        },
         estimatedDeliveryAt: null,
         estimatedDeliveryMinutes: 60,
       },
@@ -53,6 +69,7 @@ describe("Orchestration scoring", () => {
     const scored = scoreEligibleEvaluations([
       {
         evaluationId: "a",
+        outcomeIndex: 0,
         providerId: "1",
         providerCode: "A",
         providerPriority: 10,
@@ -79,6 +96,7 @@ describe("Orchestration scoring", () => {
     const scored = scoreEligibleEvaluations([
       {
         evaluationId: "a",
+        outcomeIndex: 0,
         providerId: "1",
         providerCode: "B",
         providerPriority: 10,
@@ -89,6 +107,7 @@ describe("Orchestration scoring", () => {
       },
       {
         evaluationId: "b",
+        outcomeIndex: 1,
         providerId: "2",
         providerCode: "A",
         providerPriority: 10,

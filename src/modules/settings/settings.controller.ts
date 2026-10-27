@@ -13,6 +13,16 @@ function requireUser(req: Request) {
   return req.user;
 }
 
+function requireRequestId(req: Request): string {
+  if (!req.requestId) {
+    throw new AppError("Request id is required.", {
+      statusCode: 500,
+      code: ErrorCodes.INTERNAL_ERROR,
+    });
+  }
+  return req.requestId;
+}
+
 export class SettingsController {
   constructor(private readonly service: SettingsService = settingsService) {}
 
@@ -23,7 +33,25 @@ export class SettingsController {
   ): Promise<void> => {
     try {
       requireUser(req);
-      const result = this.service.getSnapshot();
+      const result = await this.service.getSnapshot();
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  patchBookingPolicies = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const user = requireUser(req);
+      const result = await this.service.patchBookingPolicies({
+        adminUserId: user.id,
+        requestId: requireRequestId(req),
+        body: req.body,
+      });
       res.status(200).json(result);
     } catch (error) {
       next(error);

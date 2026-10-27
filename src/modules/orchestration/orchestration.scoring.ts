@@ -5,6 +5,8 @@ import type { ScoreBreakdown } from "./orchestration.types.js";
 
 export type ScorableEvaluation = {
   evaluationId: string;
+  /** Index of this outcome in the orchestration `outcomes` array (stable across multi-rate fan-out). */
+  outcomeIndex: number;
   providerId: string;
   providerCode: string;
   providerPriority: number;
@@ -19,11 +21,7 @@ export type ScoredEvaluation = ScorableEvaluation & {
   scoreBreakdown: ScoreBreakdown;
 };
 
-function relativeInverseScore(
-  value: number,
-  min: number,
-  max: number,
-): number {
+function relativeInverseScore(value: number, min: number, max: number): number {
   if (max === min) {
     return 100;
   }
@@ -31,9 +29,7 @@ function relativeInverseScore(
   return Math.max(0, Math.min(100, (1 - normalized) * 100));
 }
 
-function computePriceScores(
-  evaluations: ScorableEvaluation[],
-): Map<string, number> {
+function computePriceScores(evaluations: ScorableEvaluation[]): Map<string, number> {
   const prices = evaluations
     .map((item) => item.quote.amount?.amount)
     .filter((value): value is number => typeof value === "number");
@@ -53,18 +49,13 @@ function computePriceScores(
   return scores;
 }
 
-function computeEtaScores(
-  evaluations: ScorableEvaluation[],
-): Map<string, number> {
+function computeEtaScores(evaluations: ScorableEvaluation[]): Map<string, number> {
   const etaMinutes = evaluations.map((item) => {
     if (item.estimatedDeliveryMinutes != null) {
       return item.estimatedDeliveryMinutes;
     }
     if (item.estimatedDeliveryAt) {
-      return Math.max(
-        0,
-        (item.estimatedDeliveryAt.getTime() - Date.now()) / 60_000,
-      );
+      return Math.max(0, (item.estimatedDeliveryAt.getTime() - Date.now()) / 60_000);
     }
     return null;
   });
@@ -82,10 +73,7 @@ function computeEtaScores(
     if (minutes == null) {
       return;
     }
-    scores.set(
-      evaluation.evaluationId,
-      relativeInverseScore(minutes, min, max),
-    );
+    scores.set(evaluation.evaluationId, relativeInverseScore(minutes, min, max));
   });
   return scores;
 }
@@ -116,9 +104,7 @@ function computeAvailabilityScores(
   return scores;
 }
 
-function computePriorityScores(
-  evaluations: ScorableEvaluation[],
-): Map<string, number> {
+function computePriorityScores(evaluations: ScorableEvaluation[]): Map<string, number> {
   const scores = new Map<string, number>();
   const priorities = evaluations.map((item) => item.providerPriority);
   const min = Math.min(...priorities);
@@ -247,9 +233,7 @@ export function compareScoredEvaluations(
   return a.providerCode.localeCompare(b.providerCode);
 }
 
-export function buildSelectionReason(
-  winner: ScoredEvaluation,
-): string {
+export function buildSelectionReason(winner: ScoredEvaluation): string {
   const knownFactors: string[] = [];
   if (winner.scoreBreakdown.price != null) {
     knownFactors.push("price");

@@ -1,6 +1,9 @@
 import { ErrorCodes, type ErrorCode } from "../../core/errors/error-codes.js";
 import { AppError } from "../../core/errors/app-error.js";
-import type { BookingOutcome, NormalizedBookingResult } from "../provider/contracts/booking.js";
+import type {
+  BookingOutcome,
+  NormalizedBookingResult,
+} from "../provider/contracts/booking.js";
 import { ProviderAdapterError } from "../provider/contracts/provider-error.js";
 
 export type ResolvedBookingOutcome = {
@@ -13,14 +16,14 @@ export type ResolvedBookingOutcome = {
   bookedAt: Date | null;
   failureCode: ErrorCode | null;
   failureMessage: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export function resolveNormalizedBookingResult(
   result: NormalizedBookingResult,
 ): ResolvedBookingOutcome {
   const outcome =
-    result.outcome ??
-    (result.success ? ("BOOKED" as const) : ("FAILED" as const));
+    result.outcome ?? (result.success ? ("BOOKED" as const) : ("FAILED" as const));
 
   return {
     outcome,
@@ -30,12 +33,24 @@ export function resolveNormalizedBookingResult(
     bookedAmount: result.amount?.amount ?? null,
     bookedCurrency: result.amount?.currency ?? null,
     bookedAt: result.bookedAt ? new Date(result.bookedAt) : null,
-    failureCode:
-      outcome === "FAILED"
-        ? ErrorCodes.PROVIDER_BOOKING_REJECTED
-        : null,
+    failureCode: outcome === "FAILED" ? ErrorCodes.PROVIDER_BOOKING_REJECTED : null,
     failureMessage: outcome === "FAILED" ? result.reason : null,
+    metadata: result.metadata,
   };
+}
+
+export function providerBookingMetadataReconciled(
+  metadata: Record<string, unknown> | undefined,
+): boolean {
+  if (!metadata) {
+    return false;
+  }
+  const awb = metadata.shiprocketAwbCode;
+  if (typeof awb === "string" && awb.length > 0) {
+    return true;
+  }
+  const shipmentId = metadata.shiprocketShipmentId;
+  return typeof shipmentId === "string" && shipmentId.length > 0;
 }
 
 export function classifyProviderAdapterError(
@@ -87,7 +102,10 @@ export function classifyBookingExecutionError(error: unknown): ResolvedBookingOu
     return classifyProviderAdapterError(error);
   }
   if (error instanceof AppError) {
-    if (error.code === ErrorCodes.PROVIDER_ADAPTER_ERROR && error.cause instanceof ProviderAdapterError) {
+    if (
+      error.code === ErrorCodes.PROVIDER_ADAPTER_ERROR &&
+      error.cause instanceof ProviderAdapterError
+    ) {
       return classifyProviderAdapterError(error.cause);
     }
     return {

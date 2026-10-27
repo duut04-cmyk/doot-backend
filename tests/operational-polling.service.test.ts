@@ -114,4 +114,28 @@ describe("OperationalPollingService", () => {
 
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
+
+  it("retries provider refresh on a later cycle after a failed poll", async () => {
+    pollingRepo.candidates = [candidate("delivery-1")];
+    refreshMock
+      .mockResolvedValueOnce({
+        pollSucceeded: false,
+        deliveryId: "delivery-1",
+        deliveryStatus: "BOOKED",
+        driverAssignment: null,
+        trackingPoint: null,
+      })
+      .mockResolvedValueOnce({
+        pollSucceeded: true,
+        deliveryId: "delivery-1",
+        deliveryStatus: "BOOKED",
+        driverAssignment: null,
+        trackingPoint: null,
+      });
+
+    await service.runCycle("cycle-fail");
+    await service.runCycle("cycle-recover");
+
+    expect(refreshMock).toHaveBeenCalledTimes(2);
+  });
 });

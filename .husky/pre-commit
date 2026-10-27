@@ -1,2 +1,8 @@
+#!/usr/bin/env sh
+set -e
+
 npx lint-staged
+npm run prisma:validate
+npm run typecheck
+npm run test
 npm run build

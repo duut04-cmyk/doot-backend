@@ -5,7 +5,10 @@ import type { InMemoryOrchestrationRepository } from "./in-memory-orchestration-
 import type { InMemoryProviderRepository } from "./in-memory-provider-repository.js";
 import { seedOrchestrationMockProvider } from "./provider-adapter-test-helpers.js";
 import { defaultCancellationPolicySnapshot } from "./cancellation-policy-test-helpers.js";
-import { enrichQuoteSnapshotWithCustomerPricing } from "../../src/modules/pricing/customer-delivery-pricing.js";
+import {
+  DEFAULT_PLATFORM_SERVICE_FEE_PERCENT,
+  enrichQuoteSnapshotWithCustomerPricing,
+} from "../../src/modules/pricing/customer-delivery-pricing.js";
 
 export async function seedOptionReadyDelivery(input: {
   deliveryRepo: InMemoryDeliveryRepository;
@@ -30,7 +33,7 @@ export async function seedOptionReadyDelivery(input: {
     pickup: {
       addressText: "Pickup",
       contactName: "A",
-      ...storedPhone("+91", "9876543210"),
+      ...storedPhone("+91", "9888877776"),
       instructions: null,
       latitude: null,
       longitude: null,
@@ -132,12 +135,15 @@ export async function seedOptionReadyDelivery(input: {
     selectionReason: "Selected based on price.",
     quoteSnapshot:
       input.quoteSnapshot ??
-      enrichQuoteSnapshotWithCustomerPricing({
-        amount: input.quoteAmount ?? 150,
-        currency: "INR",
-        providerQuoteId: "Q1",
-        quotedAt: new Date().toISOString(),
-      }),
+      enrichQuoteSnapshotWithCustomerPricing(
+        {
+          amount: input.quoteAmount ?? 150,
+          currency: "INR",
+          providerQuoteId: "Q1",
+          quotedAt: new Date().toISOString(),
+        },
+        DEFAULT_PLATFORM_SERVICE_FEE_PERCENT,
+      ),
     availabilitySnapshot: { known: false },
     etaSnapshot: null,
     cancellationPolicySnapshot: defaultCancellationPolicySnapshot(),

@@ -69,6 +69,8 @@ const envSchema = z
 
     BOOKING_PRICE_TOLERANCE_PERCENT: z.coerce.number().min(0).max(100).default(0),
 
+    PLATFORM_SERVICE_FEE_PERCENT: z.coerce.number().int().min(0).max(100).default(10),
+
     OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(600),
     OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
     OTP_GENERATION_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(60),
@@ -108,6 +110,28 @@ const envSchema = z
     ),
     MSG91_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
 
+    /** Operational pickup/delivery OTP SMS: mock (disabled), msg91, or twilio. */
+    SMS_PROVIDER: z
+      .preprocess(
+        (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
+        z.enum(["mock", "msg91", "twilio"]).default("msg91"),
+      )
+      .optional()
+      .default("msg91"),
+
+    TWILIO_ACCOUNT_SID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    TWILIO_AUTH_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    TWILIO_FROM_NUMBER: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+
+    /**
+     * Non-production only: send pickup/drop OTP SMS to this number instead of delivery contacts
+     * (e.g. Twilio trial verified handset). Ignored when NODE_ENV=production.
+     */
+    SMS_OTP_RECIPIENT_OVERRIDE: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
     OPERATIONAL_POLLING_ENABLED: z
       .preprocess((value) => value === "true" || value === true, z.boolean())
       .optional()
@@ -123,6 +147,15 @@ const envSchema = z
       .optional()
       .default(false),
 
+    /**
+     * MSG91 smoke route POST /api/v1/test/sms (non-production only).
+     * Default false — opt in explicitly for local testing.
+     */
+    ENABLE_TEST_SMS_ENDPOINT: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
     /** Wall-clock budget for evaluating all providers during orchestration (ms). */
     ORCHESTRATION_MAX_DURATION_MS: z.coerce.number().int().positive().optional(),
 
@@ -134,6 +167,53 @@ const envSchema = z
       .preprocess((value) => value === "true" || value === true, z.boolean())
       .optional()
       .default(false),
+
+    /**
+     * When set, providers matching this `Provider.code` are evaluated first.
+     * Fallback providers run only if the preferred tier yields no ELIGIBLE options
+     * and no fail-fast ERROR (auth/config/validation).
+     */
+    ORCHESTRATION_PREFERRED_PROVIDER_CODE: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    SHIPROCKET_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    SHIPROCKET_API_BASE_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().optional().default("https://api-sandbox.shiprocket.in"),
+    ),
+
+    SHIPROCKET_AUTH_EMAIL: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    SHIPROCKET_AUTH_PASSWORD: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    /** Server-only Google Geocoding API key (reverse geocode lat/lng → postal_code). */
+    GOOGLE_GEOCODING_API_KEY: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    /**
+     * When true, Shiprocket adapter exposes booking/cancel/tracking operations.
+     * Default false until sandbox contracts are verified.
+     */
+    SHIPROCKET_BOOKING_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    /** Pickup location name configured in the Shiprocket account (required for adhoc orders). */
+    SHIPROCKET_PICKUP_LOCATION: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
 
     /** Active payment gateway: stub (default) or cashfree */
     PAYMENT_GATEWAY: z
@@ -191,6 +271,31 @@ const envSchema = z
       });
     }
 
+    if (data.SMS_OTP_RECIPIENT_OVERRIDE && data.NODE_ENV === "production") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["SMS_OTP_RECIPIENT_OVERRIDE"],
+        message: "SMS_OTP_RECIPIENT_OVERRIDE is not allowed in production",
+      });
+    }
+
+    if (data.SMS_PROVIDER === "twilio" && data.NODE_ENV !== "test") {
+      const twilioFields = [
+        ["TWILIO_ACCOUNT_SID", data.TWILIO_ACCOUNT_SID],
+        ["TWILIO_AUTH_TOKEN", data.TWILIO_AUTH_TOKEN],
+        ["TWILIO_FROM_NUMBER", data.TWILIO_FROM_NUMBER],
+      ] as const;
+      for (const [field, value] of twilioFields) {
+        if (!value) {
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: `${field} is required when SMS_PROVIDER is twilio`,
+          });
+        }
+      }
+    }
+
     if (data.MSG91_ENABLED && data.NODE_ENV !== "test") {
       const pickupTemplateId =
         data.MSG91_PICKUP_OTP_TEMPLATE_ID ?? data.MSG91_PICKUP_OTP_FLOW_ID;
@@ -213,6 +318,53 @@ const envSchema = z
             message: `${field} is required when MSG91_ENABLED is true`,
           });
         }
+      }
+    }
+
+    if (data.SHIPROCKET_ENABLED && data.NODE_ENV !== "test") {
+      const allowedShiprocketHosts = new Set([
+        "api-sandbox.shiprocket.in",
+        "apiv2.shiprocket.in",
+      ]);
+      let shiprocketHost: string | null;
+      try {
+        shiprocketHost = new URL(data.SHIPROCKET_API_BASE_URL).hostname.toLowerCase();
+      } catch {
+        shiprocketHost = null;
+      }
+      if (!shiprocketHost || !allowedShiprocketHosts.has(shiprocketHost)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_API_BASE_URL"],
+          message:
+            "SHIPROCKET_API_BASE_URL must be an allowed Shiprocket host when SHIPROCKET_ENABLED is true",
+        });
+      }
+      if (!data.SHIPROCKET_AUTH_EMAIL) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_AUTH_EMAIL"],
+          message: "SHIPROCKET_AUTH_EMAIL is required when SHIPROCKET_ENABLED is true",
+        });
+      }
+      if (!data.SHIPROCKET_AUTH_PASSWORD) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_AUTH_PASSWORD"],
+          message:
+            "SHIPROCKET_AUTH_PASSWORD is required when SHIPROCKET_ENABLED is true",
+        });
+      }
+    }
+
+    if (data.SHIPROCKET_BOOKING_ENABLED && data.NODE_ENV !== "test") {
+      if (!data.SHIPROCKET_PICKUP_LOCATION) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_PICKUP_LOCATION"],
+          message:
+            "SHIPROCKET_PICKUP_LOCATION is required when SHIPROCKET_BOOKING_ENABLED is true",
+        });
       }
     }
 
@@ -254,6 +406,9 @@ const envSchema = z
   });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** @internal Exported for configuration regression tests only. */
+export { envSchema };
 
 function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env);
@@ -343,7 +498,27 @@ export function getMsg91DeliveryTemplateId(): string | undefined {
   return env.MSG91_DELIVERY_OTP_TEMPLATE_ID ?? env.MSG91_DELIVERY_OTP_FLOW_ID;
 }
 
-/** True when pickup/delivery OTP SMS can be sent. */
+export function isTwilioConfigured(): boolean {
+  return Boolean(
+    env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER,
+  );
+}
+
+/** True when operational SMS is enabled for the configured provider. */
+export function isOperationalSmsEnabled(): boolean {
+  switch (env.SMS_PROVIDER) {
+    case "mock":
+      return false;
+    case "twilio":
+      return isTwilioConfigured();
+    case "msg91":
+      return env.MSG91_ENABLED === true && isMsg91Configured();
+    default:
+      return false;
+  }
+}
+
+/** True when pickup/delivery OTP SMS can be sent via MSG91. */
 export function isMsg91Configured(): boolean {
   return Boolean(
     env.MSG91_AUTH_KEY &&
