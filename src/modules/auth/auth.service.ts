@@ -304,6 +304,24 @@ export class AuthService {
   }
 
   async login(input: LoginInput): Promise<LoginResult> {
+    const user = await this.authenticatePasswordLogin(input);
+    return this.issueSession(user, "Login successful.");
+  }
+
+  /** Admin panel login — same credential checks as login, but ADMIN role only. */
+  async loginAdmin(input: LoginInput): Promise<LoginResult> {
+    const user = await this.authenticatePasswordLogin(input);
+    if (user.role !== "ADMIN") {
+      logger.info({ userId: user.id }, "admin_login_rejected_non_admin");
+      throw new AppError(GENERIC_CREDENTIALS_ERROR, {
+        statusCode: 401,
+        code: ErrorCodes.INVALID_CREDENTIALS,
+      });
+    }
+    return this.issueSession(user, "Login successful.");
+  }
+
+  private async authenticatePasswordLogin(input: LoginInput): Promise<User> {
     const email = normalizeEmail(input.email);
 
     const user = await this.repository.findUserByEmail(email);
@@ -333,7 +351,7 @@ export class AuthService {
 
     this.assertLoginAccountStatus(user.status);
 
-    return this.issueSession(user, "Login successful.");
+    return user;
   }
 
   async googleLogin(input: GoogleLoginInput): Promise<LoginResult> {

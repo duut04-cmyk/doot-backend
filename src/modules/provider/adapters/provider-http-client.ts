@@ -13,10 +13,7 @@ const REDACTED_HEADER_NAMES = new Set([
 
 type FetchFn = typeof fetch;
 
-export function resolveProviderRequestUrl(
-  baseUrl: string,
-  path: string,
-): string {
+export function resolveProviderRequestUrl(baseUrl: string, path: string): string {
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   if (!path || path === "/") {
     return normalizedBase.replace(/\/$/, "");
@@ -51,10 +48,7 @@ export class ProviderHttpClient {
     allowErrorResponseBody?: boolean;
   }): Promise<ProviderHttpResponse<T>> {
     const started = Date.now();
-    const url = resolveProviderRequestUrl(
-      input.config.baseUrl,
-      input.request.path,
-    );
+    const url = resolveProviderRequestUrl(input.config.baseUrl, input.request.path);
     const timeoutMs = input.request.timeoutMs ?? input.config.timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -110,11 +104,13 @@ export class ProviderHttpClient {
             durationMs,
           };
         }
+        const edgeAccessDenied = response.status === 498;
         throw new ProviderAdapterError({
           providerCode: input.config.providerCode,
           operation: input.operation,
-          category:
-            response.status === 429
+          category: edgeAccessDenied
+            ? "PROVIDER_SERVICE_UNAVAILABLE"
+            : response.status === 429
               ? "PROVIDER_RATE_LIMITED"
               : response.status >= 500
                 ? "PROVIDER_SERVICE_UNAVAILABLE"
@@ -125,8 +121,11 @@ export class ProviderHttpClient {
                     : response.status === 404
                       ? "PROVIDER_NOT_FOUND"
                       : "PROVIDER_VALIDATION_ERROR",
-          safeMessage: `Provider HTTP request failed with status ${response.status}.`,
+          safeMessage: edgeAccessDenied
+            ? "Provider access was denied by edge infrastructure."
+            : `Provider HTTP request failed with status ${response.status}.`,
           providerErrorCode: String(response.status),
+          retryable: edgeAccessDenied ? false : undefined,
           requestId: input.requestId,
         });
       }
@@ -175,9 +174,7 @@ export function redactProviderHeaders(
 ): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
-    redacted[key] = REDACTED_HEADER_NAMES.has(key.toLowerCase())
-      ? "[REDACTED]"
-      : value;
+    redacted[key] = REDACTED_HEADER_NAMES.has(key.toLowerCase()) ? "[REDACTED]" : value;
   }
   return redacted;
 }

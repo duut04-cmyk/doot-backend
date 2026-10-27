@@ -1,9 +1,5 @@
 import type { UserRole } from "@prisma/client";
 import { logger } from "../../config/logger.js";
-import {
-  DEFAULT_BOOKING_PRICE_TOLERANCE_PERCENT,
-  DEFAULT_BOOKING_QUOTE_MAX_AGE_SECONDS,
-} from "../../config/env.js";
 import { AppError } from "../../core/errors/app-error.js";
 import { ErrorCodes } from "../../core/errors/error-codes.js";
 import {
@@ -37,8 +33,14 @@ import {
 import { mapBookingGetResponse, mapConfirmResponse } from "./booking.mapper.js";
 import {
   classifyBookingExecutionError,
+  providerBookingMetadataReconciled,
   resolveNormalizedBookingResult,
 } from "./booking.provider-outcome.js";
+import {
+  mergeProviderMetadataIntoQuoteSnapshot,
+  resolveShiprocketProviderMetadata,
+} from "./booking.quote-snapshot.js";
+import { enrichShiprocketUnknownBookingOutcome } from "./booking.shiprocket-recovery.js";
 import { hasMaterialCancellationPolicyChange } from "./booking.policy-freshness.js";
 import {
   hasMaterialPriceChange,
@@ -54,6 +56,10 @@ import {
   paymentRepository,
   type IPaymentRepository,
 } from "../payment/payment.repository.js";
+import {
+  runtimeSettingsService,
+  type RuntimeSettingsService,
+} from "../runtime-settings/runtime-settings.service.js";
 
 const CONFIRMABLE_STATUSES = new Set(["OPTION_READY"]);
 const TERMINAL_BOOKING_STATUSES = new Set(["BOOKED", "FAILED", "UNKNOWN"]);
@@ -66,6 +72,7 @@ export class BookingService {
     private readonly bookingRepo: IBookingRepository = bookingRepository,
     private readonly adapterExecutor: ProviderAdapterExecutor = providerAdapterExecutor,
     private readonly paymentRepo: IPaymentRepository = paymentRepository,
+    private readonly runtimeSettings: RuntimeSettingsService = runtimeSettingsService,
   ) {}
 
   async confirm(input: {
@@ -128,6 +135,29 @@ export class BookingService {
       input.deliveryId,
     );
     if (latestBooking?.status === "UNKNOWN") {
+      const reconciled = await this.tryReconcileUnknownBooking({
+        deliveryId: input.deliveryId,
+        booking: latestBooking,
+        delivery,
+        role: input.role,
+        userId: input.userId,
+        requestId: input.requestId,
+        testHints: input.testHints,
+      });
+      if (reconciled) {
+        const refreshedDelivery = await this.deliveryRepo.findById(input.deliveryId);
+        const response = mapConfirmResponse(
+          input.role,
+          {
+            id: delivery.id,
+            reference: delivery.reference,
+            status: refreshedDelivery?.status ?? delivery.status,
+          },
+          reconciled,
+        );
+        await this.persistIdempotencyIfNeeded(input, response);
+        return { success: true as const, data: response };
+      }
       throw new AppError(
         "Booking outcome is unknown. Reconciliation is required before retrying.",
         {
@@ -221,8 +251,10 @@ export class BookingService {
       optionCreatedAt: selectedOption.createdAt,
     });
 
+    const bookingPolicies = await this.runtimeSettings.getBookingPolicies();
+
     if (
-      isQuoteStale(quoteTimestamp, DEFAULT_BOOKING_QUOTE_MAX_AGE_SECONDS) &&
+      isQuoteStale(quoteTimestamp, bookingPolicies.quoteMaxAgeSeconds) &&
       providerSupportsQuote(provider)
     ) {
       const refreshed = await this.requote({
@@ -242,7 +274,7 @@ export class BookingService {
         hasMaterialPriceChange({
           originalAmount: quoteSnapshot.amount,
           newAmount: refreshed.amount.amount,
-          tolerancePercent: DEFAULT_BOOKING_PRICE_TOLERANCE_PERCENT,
+          tolerancePercent: bookingPolicies.priceTolerancePercent,
         })
       ) {
         throw new AppError(
@@ -253,12 +285,17 @@ export class BookingService {
           },
         );
       }
-      quoteSnapshot = enrichQuoteSnapshotWithCustomerPricing({
-        amount: refreshed.amount.amount,
-        currency: refreshed.amount.currency,
-        providerQuoteId: refreshed.providerQuoteId,
-        quotedAt: refreshed.quotedAt ?? new Date().toISOString(),
-      });
+      const platformServiceFeePercent =
+        await this.runtimeSettings.getPlatformServiceFeePercent();
+      quoteSnapshot = enrichQuoteSnapshotWithCustomerPricing(
+        {
+          amount: refreshed.amount.amount,
+          currency: refreshed.amount.currency,
+          providerQuoteId: refreshed.providerQuoteId,
+          quotedAt: refreshed.quotedAt ?? new Date().toISOString(),
+        },
+        platformServiceFeePercent,
+      );
     }
 
     const policySnapshot =
@@ -367,10 +404,20 @@ export class BookingService {
 
     let resolved;
     try {
+      const winnerEvaluation = orchestration.evaluations.find(
+        (evaluation) => evaluation.id === selectedOption.evaluationId,
+      );
       const bookingRequest = toBookingRequest(delivery, {
         serviceCode: serviceValidation.serviceCode ?? undefined,
         providerQuoteId: quoteSnapshot.providerQuoteId ?? null,
         idempotencyKey: correlationReference,
+        providerMetadata:
+          selectedOption.providerCode === "SHIPROCKET"
+            ? resolveShiprocketProviderMetadata(
+                quoteSnapshot,
+                winnerEvaluation?.providerMetadata ?? null,
+              )
+            : undefined,
       });
 
       logger.info(
@@ -394,6 +441,11 @@ export class BookingService {
       resolved = resolveNormalizedBookingResult(adapterResult);
     } catch (error) {
       resolved = classifyBookingExecutionError(error);
+      resolved = enrichShiprocketUnknownBookingOutcome({
+        providerCode: selectedOption.providerCode,
+        deliveryReference: delivery.reference,
+        resolved,
+      });
     }
 
     const finalized = await this.finalizeBookingAttempt({
@@ -507,6 +559,11 @@ export class BookingService {
           ? "Provider booking failed"
           : "Provider booking outcome unknown";
 
+    const quoteSnapshot = mergeProviderMetadataIntoQuoteSnapshot(
+      input.booking.quoteSnapshot,
+      input.resolved.metadata,
+    );
+
     const finalized = await this.deliveryRepo.withTransaction(async (tx) => {
       const booking = await this.bookingRepo.finalizeBooking(
         {
@@ -517,6 +574,7 @@ export class BookingService {
           providerStatus: input.resolved.providerStatus,
           bookedAmount: input.resolved.bookedAmount,
           bookedCurrency: input.resolved.bookedCurrency,
+          quoteSnapshot,
           unknownOutcome: status === "UNKNOWN",
           failureCode: input.resolved.failureCode,
           failureMessage: input.resolved.failureMessage,
@@ -566,6 +624,84 @@ export class BookingService {
     );
 
     return finalized;
+  }
+
+  private async tryReconcileUnknownBooking(input: {
+    deliveryId: string;
+    booking: Awaited<ReturnType<IBookingRepository["findLatestByDeliveryId"]>>;
+    delivery: ReturnType<typeof toDeliveryDetailDto>;
+    role: UserRole;
+    userId: string;
+    requestId: string;
+    testHints?: AdapterExecutionContext["testHints"];
+  }): Promise<Awaited<ReturnType<IBookingRepository["finalizeBooking"]>> | null> {
+    const booking = input.booking;
+    if (!booking || booking.status !== "UNKNOWN" || !booking.providerOrderId) {
+      return null;
+    }
+
+    if (
+      providerBookingMetadataReconciled(
+        booking.quoteSnapshot.providerMetadata ?? undefined,
+      )
+    ) {
+      const resolved = resolveNormalizedBookingResult({
+        success: true,
+        outcome: "BOOKED",
+        providerBookingId: booking.providerOrderId,
+        providerReference: booking.providerReference,
+        status: booking.providerStatus ?? "CONFIRMED",
+        bookedAt: new Date().toISOString(),
+        estimatedPickupAt: null,
+        estimatedDeliveryAt: null,
+        trackingUrl: null,
+        driver: null,
+        service: null,
+        reason: null,
+        metadata: booking.quoteSnapshot.providerMetadata ?? undefined,
+      });
+      return this.finalizeBookingAttempt({
+        deliveryId: input.deliveryId,
+        booking,
+        resolved,
+        requestId: input.requestId,
+      });
+    }
+
+    try {
+      const adapterResult = await this.adapterExecutor.execute({
+        providerCode: booking.providerCode,
+        operation: "getBooking",
+        payload: { providerBookingId: booking.providerOrderId },
+        requestId: input.requestId,
+        requireReady: true,
+        testHints: input.testHints,
+      });
+      const resolved = resolveNormalizedBookingResult(adapterResult);
+      if (
+        resolved.outcome !== "BOOKED" ||
+        !providerBookingMetadataReconciled(resolved.metadata)
+      ) {
+        return null;
+      }
+      return this.finalizeBookingAttempt({
+        deliveryId: input.deliveryId,
+        booking,
+        resolved,
+        requestId: input.requestId,
+      });
+    } catch (error) {
+      logger.warn(
+        {
+          requestId: input.requestId,
+          deliveryId: input.deliveryId,
+          bookingId: booking.id,
+          err: error,
+        },
+        "booking_unknown_reconciliation_failed",
+      );
+      return null;
+    }
   }
 
   private async loadAuthorizedDelivery(

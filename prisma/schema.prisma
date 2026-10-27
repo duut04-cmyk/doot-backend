@@ -109,9 +109,10 @@ model User {
   deliveries            Delivery[]
   deliveryRatings       DeliveryRating[]
   deliveryFeedbacks     DeliveryFeedback[]
-  adminAuditLogs        AdminAuditLog[]
-  orchestrationRequests OrchestrationRequest[]
-  payments              Payment[]
+  adminAuditLogs                 AdminAuditLog[]
+  platformRuntimeSettingsUpdated PlatformRuntimeSetting[]
+  orchestrationRequests          OrchestrationRequest[]
+  payments                       Payment[]
 }
 
 model OAuthAccount {
@@ -441,6 +442,7 @@ enum AdminAuditAction {
   PROVIDER_SERVICE_DISABLED
   PROVIDER_VEHICLE_CREATED
   PROVIDER_VEHICLE_UPDATED
+  PLATFORM_RUNTIME_SETTING_UPDATED
 }
 
 enum AdminAuditResourceType {
@@ -449,6 +451,13 @@ enum AdminAuditResourceType {
   PROVIDER_VEHICLE
   PROVIDER_CREDENTIALS
   PROVIDER_CAPABILITIES
+  PLATFORM_RUNTIME_SETTING
+}
+
+enum PlatformRuntimeSettingKey {
+  BOOKING_QUOTE_MAX_AGE_SECONDS
+  BOOKING_PRICE_TOLERANCE_PERCENT
+  PLATFORM_SERVICE_FEE_PERCENT
 }
 
 model Provider {
@@ -594,6 +603,17 @@ model AdminAuditLog {
   @@index([adminUserId])
   @@index([resourceType, resourceId])
   @@index([createdAt])
+}
+
+model PlatformRuntimeSetting {
+  key             PlatformRuntimeSettingKey @id
+  intValue        Int
+  version         Int                       @default(1)
+  updatedByUserId String                    @db.Uuid
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  updatedBy User @relation(fields: [updatedByUserId], references: [id], onDelete: Restrict)
 }
 
 enum ProviderWebhookProcessingStatus {

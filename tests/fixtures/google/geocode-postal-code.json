@@ -1,0 +1,20 @@
+{
+  "status": "OK",
+  "results": [
+    {
+      "formatted_address": "Connaught Place, New Delhi, Delhi 110001, India",
+      "address_components": [
+        {
+          "long_name": "110001",
+          "short_name": "110001",
+          "types": ["postal_code"]
+        },
+        {
+          "long_name": "New Delhi",
+          "short_name": "New Delhi",
+          "types": ["locality", "political"]
+        }
+      ]
+    }
+  ]
+}

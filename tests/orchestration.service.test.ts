@@ -451,6 +451,62 @@ describe("OrchestrationService", () => {
     expect(slowEval?.errorCategory).toBe("PROVIDER_TIMEOUT");
   });
 
+  it("selects the winning hyperlocal rate when one provider returns multiple eligible quotes", async () => {
+    const shiprocketId = await seedOrchestrationMockProvider(providerRepo, {
+      code: "SHIPROCKET",
+      priority: 1,
+    });
+
+    evaluateMock.mockImplementation(async ({ provider }) => {
+      if (provider.code !== "SHIPROCKET") {
+        return eligibleOutcome({
+          providerId: provider.id,
+          providerCode: provider.code,
+          amount: 999,
+        });
+      }
+      const base = eligibleOutcome({
+        providerId: shiprocketId,
+        providerCode: "SHIPROCKET",
+        amount: 120,
+        etaMinutes: 45,
+      });
+      const cheaper = eligibleOutcome({
+        providerId: shiprocketId,
+        providerCode: "SHIPROCKET",
+        amount: 80,
+        etaMinutes: 30,
+      });
+      cheaper.signals.quote!.providerQuoteId = "courier-fast";
+      cheaper.signals.providerMetadata = { courier_company_id: "courier-fast" };
+      base.signals.quote!.providerQuoteId = "courier-slow";
+      base.signals.providerMetadata = { courier_company_id: "courier-slow" };
+      return [base, cheaper];
+    });
+
+    const deliveryId = await createDelivery();
+    const result = await buildService().orchestrate({
+      deliveryId,
+      userId: customerId,
+      role: "CUSTOMER",
+      requestId: "req-multi-rate",
+    });
+
+    expect(result.data.orchestration.selectedOption?.providerCode).toBe("SHIPROCKET");
+    expect(orchestrationRepo.options).toHaveLength(1);
+    const storedOption = orchestrationRepo.options[0]!;
+    const selectedEval = orchestrationRepo.evaluations.find(
+      (item) => item.id === storedOption.evaluationId,
+    );
+    expect(selectedEval?.quoteAmount).toBe(80);
+    const snapshot = storedOption.quoteSnapshot as {
+      providerQuoteId?: string;
+      providerMetadata?: Record<string, unknown>;
+    };
+    expect(snapshot.providerQuoteId).toBe("courier-fast");
+    expect(snapshot.providerMetadata?.courier_company_id).toBe("courier-fast");
+  });
+
   it("rejects orchestration for BOOKED deliveries", async () => {
     const deliveryId = await createDelivery();
     await deliveryRepo.transitionStatus({

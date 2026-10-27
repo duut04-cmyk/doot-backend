@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { authenticate } from "../../core/middleware/authenticate.js";
 import { validateRequest } from "../../core/validation/index.js";
@@ -8,14 +9,22 @@ import {
 } from "./orchestration.controller.js";
 import { orchestrateBodySchema } from "./orchestration.schema.js";
 
+type AuthenticateMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => void | Promise<void>;
+
 export function createOrchestrationRouter(
   controller: OrchestrationController = orchestrationController,
+  options?: { authenticateMiddleware?: AuthenticateMiddleware },
 ): Router {
   const router = Router({ mergeParams: true });
+  const auth = options?.authenticateMiddleware ?? authenticate;
 
   router.post(
     "/:id/orchestrate",
-    authenticate,
+    auth,
     validateRequest({
       params: deliveryIdParamsSchema,
       body: orchestrateBodySchema,
@@ -25,7 +34,7 @@ export function createOrchestrationRouter(
 
   router.get(
     "/:id/orchestration",
-    authenticate,
+    auth,
     validateRequest({ params: deliveryIdParamsSchema }),
     controller.getLatest,
   );

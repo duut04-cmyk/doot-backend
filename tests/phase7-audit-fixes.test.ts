@@ -16,7 +16,7 @@ import { createOperationalServices } from "./helpers/operational-refresh-test-he
 import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
 import { TrackingService } from "../src/modules/tracking/tracking.service.js";
 import { generateAccessToken } from "../src/modules/auth/auth.crypto.js";
-import { createNoopEmailSender } from "./helpers/email-test-helpers.js";
+import { createOtpTestSmsSender } from "./helpers/sms-test-helpers.js";
 import { InMemoryAuthRepository } from "./helpers/in-memory-auth-repository.js";
 import { seedCustomerUser } from "./helpers/otp-test-helpers.js";
 import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
@@ -61,8 +61,8 @@ describe("Phase 7 audit fixes", () => {
       deliveryRepo,
       otpRepo,
       new DeliveryLifecycleService(deliveryRepo),
-      authRepo,
-      createNoopEmailSender(),
+      createOtpTestSmsSender(),
+      driverRepo,
     );
   }
 

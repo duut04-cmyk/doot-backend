@@ -1,7 +1,8 @@
 import {
   env,
   getEmailFromAddress,
-  isMsg91Configured,
+  isOperationalSmsEnabled,
+  isTwilioConfigured,
   canResolvePackagePhotoUrls,
   isObjectStorageConfigured,
 } from "../../config/env.js";
@@ -93,26 +94,34 @@ export class IntegrationService {
             description: "Transactional email for OTP and notifications.",
             category: "communications",
             status: resendConfigured ? "connected" : "not_configured",
-            usedBy: "Email verification, password reset, pickup/delivery OTP",
-            impact: "OTP and password reset emails will fail without Resend.",
+            usedBy: "Email verification and password reset",
+            impact: "Verification and password reset emails will fail without Resend.",
             metadata: fromEmail ? { fromEmail } : {},
             manageHref: null,
           }),
           item({
             id: "sms-provider",
-            name: "MSG91 SMS",
+            name:
+              env.SMS_PROVIDER === "twilio"
+                ? "Twilio SMS"
+                : env.SMS_PROVIDER === "msg91"
+                  ? "MSG91 SMS"
+                  : "Operational SMS (mock)",
             description: "Pickup and delivery OTP notifications via SMS.",
             category: "communications",
-            status:
-              env.MSG91_ENABLED && isMsg91Configured()
-                ? "connected"
-                : env.MSG91_ENABLED
-                  ? "not_configured"
-                  : "not_configured",
+            status: isOperationalSmsEnabled() ? "connected" : "not_configured",
             usedBy: "Pickup OTP and delivery OTP SMS notifications",
             impact:
-              "Pickup/delivery OTP SMS will not be sent when MSG91 is disabled or misconfigured. Email remains active.",
-            metadata: env.MSG91_ENABLED ? { senderId: env.MSG91_SENDER_ID ?? "" } : {},
+              "Pickup and delivery OTP cannot be generated when the selected SMS provider is disabled or misconfigured.",
+            metadata:
+              env.SMS_PROVIDER === "twilio"
+                ? {
+                    provider: "twilio",
+                    fromConfigured: String(isTwilioConfigured()),
+                  }
+                : env.SMS_PROVIDER === "msg91"
+                  ? { provider: "msg91", senderId: env.MSG91_SENDER_ID ?? "" }
+                  : { provider: env.SMS_PROVIDER },
             manageHref: null,
           }),
         ],

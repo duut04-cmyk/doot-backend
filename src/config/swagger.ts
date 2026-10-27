@@ -14,13 +14,11 @@ import {
 import { bookingSwaggerPaths } from "../modules/booking/booking.swagger.js";
 import { paymentSwaggerPaths } from "../modules/payment/payment.swagger.js";
 import { experienceSwaggerPaths } from "../modules/experience/experience.swagger.js";
-import { feedbackSwaggerPaths } from "../modules/feedback/feedback.swagger.js";
 import {
   driverSimulationSwaggerPaths,
   operationalSwaggerPaths,
 } from "../modules/operations/operational.swagger.js";
 import { env } from "./env.js";
-import { ratingSwaggerPaths } from "../modules/rating/rating.swagger.js";
 import { orchestrationSwaggerPaths } from "../modules/orchestration/orchestration.swagger.js";
 import {
   customerSwaggerComponents,
@@ -113,8 +111,6 @@ export function buildOpenApiDocument() {
       ...operationalSwaggerPaths,
       ...(env.NODE_ENV !== "production" ? driverSimulationSwaggerPaths : {}),
       ...(env.NODE_ENV !== "production" ? testSmsSwaggerPaths : {}),
-      ...ratingSwaggerPaths,
-      ...feedbackSwaggerPaths,
       ...experienceSwaggerPaths,
       ...providerSwaggerPaths,
       ...customerSwaggerPaths,

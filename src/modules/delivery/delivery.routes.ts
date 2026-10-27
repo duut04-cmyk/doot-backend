@@ -7,11 +7,7 @@ import type { BookingController } from "../booking/booking.controller.js";
 import { createBookingRouter } from "../booking/booking.routes.js";
 import type { ExperienceController } from "../experience/experience.controller.js";
 import { createExperienceRouter } from "../experience/experience.routes.js";
-import type { FeedbackController } from "../feedback/feedback.controller.js";
-import { createFeedbackRouter } from "../feedback/feedback.routes.js";
 import { createOperationalRouter } from "../operations/operational.routes.js";
-import type { RatingController } from "../rating/rating.controller.js";
-import { createRatingRouter } from "../rating/rating.routes.js";
 import type { OrchestrationController } from "../orchestration/orchestration.controller.js";
 import { createOrchestrationRouter } from "../orchestration/orchestration.routes.js";
 import type { PaymentController } from "../payment/payment.controller.js";
@@ -35,8 +31,6 @@ export function createDeliveryRouter(
   bookingController?: BookingController,
   options?: {
     paymentController?: PaymentController;
-    ratingController?: RatingController;
-    feedbackController?: FeedbackController;
     experienceController?: ExperienceController;
     authenticateMiddleware?: AuthenticateMiddleware;
   },
@@ -44,12 +38,14 @@ export function createDeliveryRouter(
   const router = Router();
   const auth = options?.authenticateMiddleware ?? authenticate;
 
-  router.use(createOrchestrationRouter(orchestrationController));
+  router.use(
+    createOrchestrationRouter(orchestrationController, {
+      authenticateMiddleware: auth,
+    }),
+  );
   router.use(createBookingRouter(bookingController));
   router.use(createPaymentRouter(options?.paymentController));
   router.use(createOperationalRouter());
-  router.use(createRatingRouter(options?.ratingController, auth));
-  router.use(createFeedbackRouter(options?.feedbackController, auth));
   router.use(createExperienceRouter(options?.experienceController, auth));
 
   router.post(
@@ -63,6 +59,7 @@ export function createDeliveryRouter(
   router.get(
     "/",
     auth,
+    requireRole("CUSTOMER"),
     validateRequest({ query: listDeliveriesQuerySchema }),
     controller.list,
   );

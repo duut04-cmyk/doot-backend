@@ -22,9 +22,27 @@ export type SmsSendMessageInput = {
 
 export type SmsSendOutcome = "ACCEPTED" | "FAILED" | "TIMEOUT" | "UNKNOWN";
 
+/** Safe provider failure metadata for logs (no secrets, OTP, or full phone numbers). */
+export type SmsSendFailureDiagnostics = {
+  provider: "TWILIO";
+  failureCategory:
+    | "invalid_recipient"
+    | "provider_rejection"
+    | "provider_server_error"
+    | "network_timeout"
+    | "unclassified";
+  twilioErrorCode?: number;
+  httpStatus?: number;
+  sanitizedMessage?: string;
+  messageSidReturned: boolean;
+  /** Last four characters of Twilio Account SID for console cross-check. */
+  accountSidSuffix?: string;
+};
+
 export type SmsSendResult = {
   outcome: SmsSendOutcome;
   providerRequestId?: string;
+  failureDiagnostics?: SmsSendFailureDiagnostics;
 };
 
 export type SendPickupOtpSmsInput = {

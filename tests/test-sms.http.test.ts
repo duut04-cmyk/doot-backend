@@ -102,5 +102,14 @@ describe("Test SMS HTTP", () => {
       .send({ phone: "9876543210", type: "ACCOUNT_OTP" });
 
     expect(response.status).toBe(404);
+    expect(sendOtp).not.toHaveBeenCalled();
+  });
+
+  it("default-deny router does not invoke SMS sender", async () => {
+    const app = buildApp({ enabled: false });
+    await request(app)
+      .post("/api/v1/test/sms")
+      .send({ phone: "9876543210", type: "ACCOUNT_OTP" });
+    expect(sendOtp).not.toHaveBeenCalled();
   });
 });
