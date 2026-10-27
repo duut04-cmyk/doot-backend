@@ -38,7 +38,11 @@ export function createDeliveryRouter(
   const router = Router();
   const auth = options?.authenticateMiddleware ?? authenticate;
 
-  router.use(createOrchestrationRouter(orchestrationController));
+  router.use(
+    createOrchestrationRouter(orchestrationController, {
+      authenticateMiddleware: auth,
+    }),
+  );
   router.use(createBookingRouter(bookingController));
   router.use(createPaymentRouter(options?.paymentController));
   router.use(createOperationalRouter());
@@ -55,6 +59,7 @@ export function createDeliveryRouter(
   router.get(
     "/",
     auth,
+    requireRole("CUSTOMER"),
     validateRequest({ query: listDeliveriesQuerySchema }),
     controller.list,
   );

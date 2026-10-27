@@ -150,8 +150,13 @@ export class DeliveryService {
       } else {
         filters.statusIn = visible;
       }
-    } else {
+    } else if (input.role === "ADMIN") {
       filters.status = status;
+    } else {
+      throw new AppError("You do not have permission to access this resource.", {
+        statusCode: 403,
+        code: ErrorCodes.FORBIDDEN,
+      });
     }
 
     const result =

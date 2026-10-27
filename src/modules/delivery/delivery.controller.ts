@@ -50,11 +50,7 @@ export class DeliveryController {
     private readonly historyService: DeliveryHistoryService = deliveryHistoryService,
   ) {}
 
-  create = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const user = requireUser(req);
       const body = req.body as CreateDeliveryBody;
@@ -70,17 +66,13 @@ export class DeliveryController {
     }
   };
 
-  list = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const user = requireUser(req);
       const query = req.query as unknown as ListDeliveriesQuery;
       const result = await this.service.listDeliveries({
         customerId: user.id,
-        role: user.role,
+        role: "CUSTOMER",
         query,
       });
       res.status(200).json(result);
@@ -89,11 +81,26 @@ export class DeliveryController {
     }
   };
 
-  getById = async (
+  adminList = async (
     req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
+    try {
+      requireUser(req);
+      const query = req.query as unknown as ListDeliveriesQuery;
+      const result = await this.service.listDeliveries({
+        customerId: "",
+        role: "ADMIN",
+        query,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const user = requireUser(req);
       const params = req.params as unknown as DeliveryIdParams;

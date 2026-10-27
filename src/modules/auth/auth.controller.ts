@@ -19,11 +19,7 @@ import type {
 export class AuthController {
   constructor(private readonly service: AuthService = authService) {}
 
-  signup = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  signup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as SignupBody;
       const result = await this.service.signup(body);
@@ -61,11 +57,7 @@ export class AuthController {
     }
   };
 
-  login = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as LoginBody;
       const result = await this.service.login(body);
@@ -75,11 +67,21 @@ export class AuthController {
     }
   };
 
-  refresh = async (
+  adminLogin = async (
     req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
+    try {
+      const body = req.body as LoginBody;
+      const result = await this.service.loginAdmin(body);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  refresh = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as RefreshSessionBody;
       const result = await this.service.refreshSession(body);
@@ -89,11 +91,7 @@ export class AuthController {
     }
   };
 
-  logout = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as LogoutBody;
       const result = await this.service.logout(body);
@@ -103,11 +101,7 @@ export class AuthController {
     }
   };
 
-  me = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
+  me = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user) {
         next(

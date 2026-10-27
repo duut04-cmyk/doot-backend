@@ -7,10 +7,25 @@ import {
   REQUIRE_KNOWN_CANCELLATION_POLICY,
   SCORE_WEIGHTS,
 } from "../orchestration/orchestration.constants.js";
-import type { SettingsSnapshotDto } from "./settings.types.js";
+import {
+  runtimeSettingsService,
+  type RuntimeSettingsService,
+} from "../runtime-settings/runtime-settings.service.js";
+import type { PatchBookingPoliciesInput } from "../runtime-settings/runtime-settings.schema.js";
+import type {
+  PatchBookingPoliciesResponseDto,
+  SettingsSnapshotDto,
+} from "./settings.types.js";
 
 export class SettingsService {
-  getSnapshot(): { success: true; data: SettingsSnapshotDto } {
+  constructor(
+    private readonly runtimeSettings: RuntimeSettingsService = runtimeSettingsService,
+  ) {}
+
+  async getSnapshot(): Promise<{ success: true; data: SettingsSnapshotDto }> {
+    const bookingStates = await this.runtimeSettings.getBookingSettingStates();
+    const pricingStates = await this.runtimeSettings.getPricingSettingStates();
+
     return {
       success: true,
       data: {
@@ -23,8 +38,11 @@ export class SettingsService {
         },
         policies: {
           booking: {
-            quoteMaxAgeSeconds: env.BOOKING_QUOTE_MAX_AGE_SECONDS,
-            priceTolerancePercent: env.BOOKING_PRICE_TOLERANCE_PERCENT,
+            quoteMaxAgeSeconds: bookingStates.quoteMaxAgeSeconds.value,
+            priceTolerancePercent: bookingStates.priceTolerancePercent.value,
+          },
+          pricing: {
+            platformServiceFeePercent: pricingStates.platformServiceFeePercent.value,
           },
           auth: {
             jwtAccessExpiresIn: env.JWT_ACCESS_EXPIRES_IN,
@@ -55,7 +73,36 @@ export class SettingsService {
           mockProviderAdapter: env.ENABLE_MOCK_PROVIDER_ADAPTER,
           developmentMode: env.NODE_ENV === "development",
         },
+        runtime: {
+          booking: bookingStates,
+          pricing: pricingStates,
+        },
         checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async patchBookingPolicies(input: {
+    adminUserId: string;
+    requestId: string;
+    body: PatchBookingPoliciesInput;
+  }): Promise<{ success: true; data: PatchBookingPoliciesResponseDto }> {
+    const result = await this.runtimeSettings.patchBookingPolicies(input);
+    return {
+      success: true,
+      data: {
+        booking: result.booking,
+        pricing: result.pricing,
+        audit: {
+          outcome: result.audit.outcome,
+          changes: result.audit.changes.map((change) => ({
+            key: change.key,
+            previousValue: change.previousValue,
+            newValue: change.newValue,
+            previousVersion: change.previousVersion,
+            newVersion: change.newVersion,
+          })),
+        },
       },
     };
   }

@@ -69,6 +69,8 @@ const envSchema = z
 
     BOOKING_PRICE_TOLERANCE_PERCENT: z.coerce.number().min(0).max(100).default(0),
 
+    PLATFORM_SERVICE_FEE_PERCENT: z.coerce.number().int().min(0).max(100).default(10),
+
     OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(600),
     OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
     OTP_GENERATION_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(60),

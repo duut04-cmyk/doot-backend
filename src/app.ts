@@ -4,6 +4,10 @@ import express, { type Request } from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import swaggerUi from "swagger-ui-express";
+import {
+  createCorsOriginCallback,
+  resolveCorsAllowedOrigins,
+} from "./config/cors.config.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { buildOpenApiDocument } from "./config/swagger.js";
@@ -26,12 +30,15 @@ export function createApp(options?: {
   app.disable("x-powered-by");
 
   app.use(helmet());
-  const corsOrigins = [env.FRONTEND_URL, env.ADMIN_FRONTEND_URL].filter(
-    (value): value is string => Boolean(value),
-  );
   app.use(
     cors({
-      origin: corsOrigins.length > 0 ? corsOrigins : true,
+      origin: createCorsOriginCallback({
+        allowedOrigins: resolveCorsAllowedOrigins(
+          env.FRONTEND_URL,
+          env.ADMIN_FRONTEND_URL,
+        ),
+        nodeEnv: env.NODE_ENV,
+      }),
       credentials: true,
     }),
   );

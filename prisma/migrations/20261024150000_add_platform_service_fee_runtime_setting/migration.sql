@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "PlatformRuntimeSettingKey" ADD VALUE 'PLATFORM_SERVICE_FEE_PERCENT';

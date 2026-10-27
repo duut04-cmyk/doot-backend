@@ -1,5 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.MSG91_ENABLED = "false";
+process.env.SMS_PROVIDER = "mock";
+// Prevent local .env trial override from affecting unit tests
+process.env.SMS_OTP_RECIPIENT_OVERRIDE = "";
 process.env.PORT = "5000";
 process.env.APP_NAME = "Doot";
 process.env.BCRYPT_ROUNDS = "10";

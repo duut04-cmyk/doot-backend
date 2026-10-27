@@ -17,6 +17,7 @@ import type {
   ProviderVehicleDto,
 } from "./provider.types.js";
 import { decimalToNumber } from "../delivery/delivery.types.js";
+import { sanitizeProviderHealthCheckError } from "./provider-health-error.util.js";
 
 function credentialMetadata(provider: ProviderWithRelations) {
   const activeFields = new Set(provider.credentials.map((c) => c.fieldName));
@@ -30,7 +31,9 @@ function credentialMetadata(provider: ProviderWithRelations) {
   };
 }
 
-function mapService(service: ProviderWithRelations["services"][number]): ProviderServiceDto {
+function mapService(
+  service: ProviderWithRelations["services"][number],
+): ProviderServiceDto {
   return {
     id: service.id,
     code: service.code,
@@ -44,7 +47,9 @@ function mapService(service: ProviderWithRelations["services"][number]): Provide
   };
 }
 
-function mapVehicle(vehicle: ProviderWithRelations["vehicles"][number]): ProviderVehicleDto {
+function mapVehicle(
+  vehicle: ProviderWithRelations["vehicles"][number],
+): ProviderVehicleDto {
   return {
     id: vehicle.id,
     vehicleType: vehicle.vehicleType,
@@ -61,7 +66,9 @@ function mapVehicle(vehicle: ProviderWithRelations["vehicles"][number]): Provide
   };
 }
 
-export function toProviderSummaryDto(provider: ProviderWithRelations): ProviderSummaryDto {
+export function toProviderSummaryDto(
+  provider: ProviderWithRelations,
+): ProviderSummaryDto {
   const integrationStatus = computeIntegrationStatusWithAdapter({
     provider,
     activeCredentials: provider.credentials,
@@ -90,7 +97,7 @@ export function toProviderSummaryDto(provider: ProviderWithRelations): ProviderS
     health: {
       status: provider.healthStatus,
       lastCheckedAt: provider.lastHealthCheckAt?.toISOString() ?? null,
-      lastError: provider.lastHealthCheckError,
+      lastError: sanitizeProviderHealthCheckError(provider.lastHealthCheckError),
     },
     credentials: credentialMetadata(provider),
     capabilities: provider.capabilities.map((item) => item.capability),
@@ -99,7 +106,9 @@ export function toProviderSummaryDto(provider: ProviderWithRelations): ProviderS
   };
 }
 
-export function toProviderDetailDto(provider: ProviderWithRelations): ProviderDetailDto {
+export function toProviderDetailDto(
+  provider: ProviderWithRelations,
+): ProviderDetailDto {
   return {
     ...toProviderSummaryDto(provider),
     description: provider.description,

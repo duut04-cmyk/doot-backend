@@ -72,6 +72,14 @@ export function createAuthRouter(controller: AuthController = authController): R
   );
 
   router.post(
+    "/admin/login",
+    loginIpRateLimit,
+    validateRequest({ body: loginSchema }),
+    loginEmailRateLimit,
+    controller.adminLogin,
+  );
+
+  router.post(
     "/refresh",
     refreshIpRateLimit,
     validateRequest({ body: refreshSessionSchema }),
