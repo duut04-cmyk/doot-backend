@@ -73,6 +73,66 @@ describe("PaymentService", () => {
     expect(second.data.payment.status).toBe("PAID");
   });
 
+  it("returns current PAID payment when ledger already exists", async () => {
+    const service = buildService();
+    const created = await paymentRepo.createPayment({
+      deliveryId,
+      customerId,
+      amount: 50,
+      currency: "INR",
+      gateway: "STUB",
+      pricingSource: "ORCHESTRATION_QUOTE",
+    });
+    await paymentRepo.updatePaymentStatus({
+      paymentId: created.id,
+      fromStatuses: ["CREATED"],
+      toStatus: "PAID",
+      paidAt: new Date(),
+    });
+    await paymentRepo.createLedgerEntry({
+      deliveryId,
+      paymentId: created.id,
+      type: "CUSTOMER_PAYMENT",
+      direction: "CREDIT",
+      amount: 50,
+      currency: "INR",
+      idempotencyKey: ledgerIdempotencyKeyForPaymentSuccess(created.id),
+    });
+
+    const result = await service.markPaymentPaid({ paymentId: created.id });
+    expect(result.status).toBe("PAID");
+    expect(paymentRepo.ledger.size).toBe(1);
+  });
+
+  it("rejects mark paid when ledger exists but payment is not PAID", async () => {
+    const service = buildService();
+    const created = await paymentRepo.createPayment({
+      deliveryId,
+      customerId,
+      amount: 50,
+      currency: "INR",
+      gateway: "STUB",
+      pricingSource: "ORCHESTRATION_QUOTE",
+    });
+    await paymentRepo.createLedgerEntry({
+      deliveryId,
+      paymentId: created.id,
+      type: "CUSTOMER_PAYMENT",
+      direction: "CREDIT",
+      amount: 50,
+      currency: "INR",
+      idempotencyKey: ledgerIdempotencyKeyForPaymentSuccess(created.id),
+    });
+
+    await expect(
+      service.markPaymentPaid({ paymentId: created.id }),
+    ).rejects.toMatchObject({
+      statusCode: 500,
+      code: ErrorCodes.INTERNAL_ERROR,
+    });
+    expect((await paymentRepo.findById(created.id))?.status).toBe("CREATED");
+  });
+
   it("marks payment paid and creates one ledger entry idempotently", async () => {
     const service = buildService();
     await service.createPaymentForDelivery({
@@ -200,6 +260,45 @@ describe("PaymentService", () => {
         role: "CUSTOMER",
       }),
     ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("marks payment paid from CREATED when success arrives before PENDING", async () => {
+    const service = buildService();
+    const orderId = `stub-order-${randomUUID()}`;
+    const created = await paymentRepo.createPayment({
+      deliveryId,
+      customerId,
+      amount: 100,
+      currency: "INR",
+      gateway: "STUB",
+      pricingSource: {
+        orchestrationRequestId: randomUUID(),
+        orchestrationOptionId: randomUUID(),
+        quoteSnapshot: { amount: 100, currency: "INR" },
+      },
+    });
+    await paymentRepo.updatePaymentStatus({
+      paymentId: created.id,
+      fromStatuses: ["CREATED"],
+      toStatus: "CREATED",
+      gatewayOrderId: orderId,
+      gatewayPaymentSessionId: "sess",
+    });
+    await paymentRepo.createAttempt({
+      paymentId: created.id,
+      attemptNumber: 1,
+      amount: 100,
+      currency: "INR",
+      gatewayOrderId: orderId,
+      status: "PENDING",
+    });
+
+    const paid = await service.markPaymentPaid({
+      paymentId: created.id,
+      gatewayPaymentId: "gw-1",
+    });
+    expect(paid.status).toBe("PAID");
+    expect(paymentRepo.ledger.size).toBe(1);
   });
 
   it("rejects invalid payment transition FAILED → PAID", async () => {
