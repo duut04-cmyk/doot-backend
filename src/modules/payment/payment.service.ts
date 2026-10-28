@@ -47,6 +47,29 @@ import { canTransitionPayment, canTransitionRefund } from "./payment.transitions
 
 const ACTIVE_CREATE_STATUSES = new Set<PaymentStatus>(["CREATED", "PENDING"]);
 
+type RefundReservationResult =
+  | {
+      kind: "created";
+      refund: RefundDto;
+      payment: PaymentDto;
+    }
+  | {
+      kind: "existing";
+      refund: RefundDto;
+      payment: PaymentDto;
+    };
+
+function isRefundIdempotencyKeyConflict(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+  const target = error.meta?.target;
+  return Array.isArray(target) && target.includes("idempotencyKey");
+}
+
 export class PaymentService {
   constructor(
     private readonly paymentRepo: IPaymentRepository = paymentRepository,
@@ -250,7 +273,17 @@ export class PaymentService {
       input.idempotencyKey ?? ledgerIdempotencyKeyForPaymentSuccess(payment.id);
     const existingLedger = await this.paymentRepo.findLedgerByIdempotencyKey(ledgerKey);
     if (existingLedger) {
-      return payment;
+      const current = await this.paymentRepo.findById(input.paymentId);
+      if (current?.status === "PAID") {
+        return current;
+      }
+      throw new AppError(
+        "Payment capture ledger exists but payment is not marked paid. Reconciliation required.",
+        {
+          statusCode: 500,
+          code: ErrorCodes.INTERNAL_ERROR,
+        },
+      );
     }
 
     const now = new Date();
@@ -261,14 +294,14 @@ export class PaymentService {
         const updated = await this.paymentRepo.updatePaymentStatus(
           {
             paymentId: payment.id,
-            fromStatuses: ["PENDING"],
+            fromStatuses: ["CREATED", "PENDING"],
             toStatus: "PAID",
             paidAt: now,
           },
           tx,
         );
         if (!updated) {
-          const current = await this.paymentRepo.findById(payment.id);
+          const current = await this.paymentRepo.findById(payment.id, tx);
           if (current?.status === "PAID") {
             return current;
           }
@@ -313,7 +346,7 @@ export class PaymentService {
         error.code === "P2002"
       ) {
         const current = await this.paymentRepo.findById(payment.id);
-        if (current) {
+        if (current?.status === "PAID") {
           return current;
         }
       }
@@ -364,21 +397,6 @@ export class PaymentService {
     reason?: string | null;
     refundNote?: string | null;
   }): Promise<RefundDto> {
-    const payment = await this.paymentRepo.findById(input.paymentId);
-    if (!payment) {
-      throw new AppError("Payment not found.", {
-        statusCode: 404,
-        code: ErrorCodes.PAYMENT_NOT_FOUND,
-      });
-    }
-
-    if (payment.status !== "PAID" && payment.status !== "PARTIALLY_REFUNDED") {
-      throw new AppError("Refund is not allowed for this payment.", {
-        statusCode: 422,
-        code: ErrorCodes.REFUND_NOT_ALLOWED,
-      });
-    }
-
     if (!isPositiveMoney(toMoneyDecimal(input.amount))) {
       throw new AppError("Invalid refund amount.", {
         statusCode: 422,
@@ -393,49 +411,40 @@ export class PaymentService {
       return existing;
     }
 
-    if (!payment.gatewayOrderId) {
+    let reserved: RefundReservationResult;
+    try {
+      reserved = await this.reserveActiveRefund(input);
+    } catch (error) {
+      if (isRefundIdempotencyKeyConflict(error)) {
+        const duplicate = await this.paymentRepo.findRefundByIdempotencyKey(
+          input.idempotencyKey,
+        );
+        if (duplicate) {
+          return duplicate;
+        }
+      }
+      throw error;
+    }
+
+    if (reserved.kind === "existing") {
+      return reserved.refund;
+    }
+
+    const { refund, payment } = reserved;
+    const gatewayOrderId = payment.gatewayOrderId;
+    if (!gatewayOrderId) {
       throw new AppError("Payment has no gateway order to refund.", {
         statusCode: 422,
         code: ErrorCodes.REFUND_NOT_ALLOWED,
       });
     }
-
-    const reserved = await this.paymentRepo.sumActiveRefundAmounts(payment.id);
-    const paidDecimal = toMoneyDecimal(payment.amount);
-    const requestedDecimal = toMoneyDecimal(input.amount);
-    const reservedDecimal = toMoneyDecimal(reserved);
-
-    if (
-      !isRefundWithinPaidAmount({
-        paidAmount: paidDecimal,
-        alreadyReserved: reservedDecimal,
-        requested: requestedDecimal,
-      })
-    ) {
-      throw new AppError("Refund amount exceeds paid amount.", {
-        statusCode: 422,
-        code: ErrorCodes.REFUND_EXCEEDS_PAID,
-      });
-    }
-
-    const refund = await this.paymentRepo.createRefund({
-      paymentId: payment.id,
-      deliveryId: payment.deliveryId,
-      amount: input.amount,
-      currency: payment.currency,
-      idempotencyKey: input.idempotencyKey,
-      reasonCode: input.reasonCode ?? null,
-      reason: input.reason ?? null,
-      status: "REQUESTED",
-    });
-
     const merchantRefundId = buildMerchantRefundId(refund.id);
     const gateway = getPaymentGateway(payment.gateway);
 
     try {
       const gatewayResult = await gateway.createRefund({
         paymentId: payment.id,
-        gatewayOrderId: payment.gatewayOrderId,
+        gatewayOrderId,
         amount: input.amount,
         currency: payment.currency,
         merchantRefundId,
@@ -480,6 +489,119 @@ export class PaymentService {
         code: ErrorCodes.PAYMENT_GATEWAY_ERROR,
       });
     }
+  }
+
+  /**
+   * Atomically reserves refund capacity on the payment row (row lock + active sum + insert).
+   * Must not call external gateways inside the transaction.
+   */
+  private async reserveActiveRefund(input: {
+    paymentId: string;
+    amount: number;
+    idempotencyKey: string;
+    reasonCode?: string | null;
+    reason?: string | null;
+  }): Promise<RefundReservationResult> {
+    return this.paymentRepo.withTransaction(async (tx) => {
+      const existing = await this.paymentRepo.findRefundByIdempotencyKey(
+        input.idempotencyKey,
+        tx,
+      );
+      if (existing) {
+        const payment = await this.paymentRepo.findById(existing.paymentId, tx);
+        if (!payment) {
+          throw new AppError("Payment not found.", {
+            statusCode: 404,
+            code: ErrorCodes.PAYMENT_NOT_FOUND,
+          });
+        }
+        return {
+          kind: "existing",
+          refund: existing,
+          payment,
+        };
+      }
+
+      await this.paymentRepo.lockPaymentForUpdate(input.paymentId, tx);
+
+      const existingAfterLock = await this.paymentRepo.findRefundByIdempotencyKey(
+        input.idempotencyKey,
+        tx,
+      );
+      if (existingAfterLock) {
+        const payment = await this.paymentRepo.findById(
+          existingAfterLock.paymentId,
+          tx,
+        );
+        if (!payment) {
+          throw new AppError("Payment not found.", {
+            statusCode: 404,
+            code: ErrorCodes.PAYMENT_NOT_FOUND,
+          });
+        }
+        return {
+          kind: "existing",
+          refund: existingAfterLock,
+          payment,
+        };
+      }
+
+      const payment = await this.paymentRepo.findById(input.paymentId, tx);
+      if (!payment) {
+        throw new AppError("Payment not found.", {
+          statusCode: 404,
+          code: ErrorCodes.PAYMENT_NOT_FOUND,
+        });
+      }
+
+      if (payment.status !== "PAID" && payment.status !== "PARTIALLY_REFUNDED") {
+        throw new AppError("Refund is not allowed for this payment.", {
+          statusCode: 422,
+          code: ErrorCodes.REFUND_NOT_ALLOWED,
+        });
+      }
+
+      if (!payment.gatewayOrderId) {
+        throw new AppError("Payment has no gateway order to refund.", {
+          statusCode: 422,
+          code: ErrorCodes.REFUND_NOT_ALLOWED,
+        });
+      }
+
+      const reserved = await this.paymentRepo.sumActiveRefundAmounts(payment.id, tx);
+      const paidDecimal = toMoneyDecimal(payment.amount);
+      const requestedDecimal = toMoneyDecimal(input.amount);
+      const reservedDecimal = toMoneyDecimal(reserved);
+
+      if (
+        !isRefundWithinPaidAmount({
+          paidAmount: paidDecimal,
+          alreadyReserved: reservedDecimal,
+          requested: requestedDecimal,
+        })
+      ) {
+        throw new AppError("Refund amount exceeds paid amount.", {
+          statusCode: 422,
+          code: ErrorCodes.REFUND_EXCEEDS_PAID,
+        });
+      }
+
+      const refund = await this.paymentRepo.createRefund(
+        {
+          paymentId: payment.id,
+          deliveryId: payment.deliveryId,
+          amount: input.amount,
+          currency: payment.currency,
+          idempotencyKey: input.idempotencyKey,
+          reasonCode: input.reasonCode ?? null,
+          reason: input.reason ?? null,
+          status: "REQUESTED",
+        },
+        tx,
+      );
+
+      return { kind: "created", refund, payment };
+    });
   }
 
   async reconcileRefundStatus(refundId: string): Promise<RefundDto> {
@@ -586,6 +708,26 @@ export class PaymentService {
       });
     }
 
+    await this.paymentRepo.lockPaymentForUpdate(refund.paymentId, tx);
+
+    const refundAfterLock = await this.paymentRepo.findRefundById(input.refundId, tx);
+    if (!refundAfterLock) {
+      throw new AppError("Refund not found.", {
+        statusCode: 404,
+        code: ErrorCodes.REFUND_NOT_FOUND,
+      });
+    }
+    if (refundAfterLock.status === "SUCCESS") {
+      return this.reconcileSuccessfulRefundRecord({
+        refund: refundAfterLock,
+        existingLedger:
+          existingLedger ??
+          (await this.paymentRepo.findLedgerByIdempotencyKey(ledgerKey, tx)),
+        tx,
+        ledgerKey,
+      });
+    }
+
     const payment = await this.paymentRepo.findById(refund.paymentId, tx);
     if (!payment) {
       throw new AppError("Payment not found.", {
@@ -594,12 +736,12 @@ export class PaymentService {
       });
     }
 
-    const newRefundedTotal = payment.refundedAmount + refund.amount;
+    const newRefundedTotal = payment.refundedAmount + refundAfterLock.amount;
     if (
       !isRefundWithinPaidAmount({
         paidAmount: toMoneyDecimal(payment.amount),
         alreadyReserved: toMoneyDecimal(payment.refundedAmount),
-        requested: toMoneyDecimal(refund.amount),
+        requested: toMoneyDecimal(refundAfterLock.amount),
       })
     ) {
       throw new AppError("Refund exceeds paid amount.", {
@@ -621,7 +763,7 @@ export class PaymentService {
     const now = new Date();
     const updatedRefund = await this.paymentRepo.updateRefundStatus(
       {
-        refundId: refund.id,
+        refundId: refundAfterLock.id,
         fromStatuses: ["REQUESTED", "PENDING"],
         toStatus: "SUCCESS",
         gatewayRefundId: input.gatewayRefundId ?? null,
@@ -632,7 +774,7 @@ export class PaymentService {
     );
 
     if (!updatedRefund) {
-      const current = await this.paymentRepo.findRefundById(refund.id, tx);
+      const current = await this.paymentRepo.findRefundById(refundAfterLock.id, tx);
       if (current?.status === "SUCCESS") {
         return this.reconcileSuccessfulRefundRecord({
           refund: current,

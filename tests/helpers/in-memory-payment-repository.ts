@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma, type Prisma as PrismaTypes } from "@prisma/client";
 import type {
   IPaymentRepository,
   PaymentCreateIdempotencyRecord,
@@ -13,7 +13,14 @@ import type {
   RefundDto,
 } from "../../src/modules/payment/payment.types.js";
 
+type InMemoryPaymentTx = PrismaTypes.TransactionClient & {
+  locks: Array<() => void>;
+};
+
+const paymentLockTail = new Map<string, Promise<void>>();
+
 export class InMemoryPaymentRepository implements IPaymentRepository {
+  private transactionQueue: Promise<unknown> = Promise.resolve();
   payments = new Map<string, PaymentDto>();
   paymentsByDelivery = new Map<string, string>();
   attempts = new Map<string, PaymentAttemptDto>();
@@ -46,13 +53,43 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
     _options?: PaymentTransactionOptions,
   ): Promise<T> {
-    const snap = this.snapshot();
-    try {
-      return await fn({} as Prisma.TransactionClient);
-    } catch (error) {
-      this.restore(snap);
-      throw error;
-    }
+    const run = this.transactionQueue.then(async () => {
+      const snap = this.snapshot();
+      const tx = { locks: [] } as InMemoryPaymentTx;
+      try {
+        return await fn(tx);
+      } catch (error) {
+        this.restore(snap);
+        throw error;
+      } finally {
+        for (const release of tx.locks) {
+          release();
+        }
+      }
+    });
+    this.transactionQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  async lockPaymentForUpdate(
+    paymentId: string,
+    client: Prisma.TransactionClient,
+  ): Promise<void> {
+    const tx = client as InMemoryPaymentTx;
+    const previous = paymentLockTail.get(paymentId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = previous.then(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    paymentLockTail.set(paymentId, current);
+    await previous;
+    tx.locks.push(() => release());
   }
 
   async findByDeliveryId(deliveryId: string): Promise<PaymentDto | null> {
@@ -84,7 +121,10 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     return this.refunds.get(refundId) ?? null;
   }
 
-  async findRefundByIdempotencyKey(key: string): Promise<RefundDto | null> {
+  async findRefundByIdempotencyKey(
+    key: string,
+    _client?: unknown,
+  ): Promise<RefundDto | null> {
     const id = this.refundsByKey.get(key);
     return id ? (this.refunds.get(id) ?? null) : null;
   }
@@ -116,7 +156,7 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
       .reduce((sum, r) => sum + r.amount, 0);
   }
 
-  async sumActiveRefundAmounts(paymentId: string): Promise<number> {
+  async sumActiveRefundAmounts(paymentId: string, _client?: unknown): Promise<number> {
     return [...this.refunds.values()]
       .filter(
         (r) =>
@@ -276,16 +316,25 @@ export class InMemoryPaymentRepository implements IPaymentRepository {
     return updated;
   }
 
-  async createRefund(input: {
-    paymentId: string;
-    deliveryId: string;
-    amount: number;
-    currency: RefundDto["currency"];
-    idempotencyKey: string;
-    reasonCode?: string | null;
-    reason?: string | null;
-    status?: RefundDto["status"];
-  }): Promise<RefundDto> {
+  async createRefund(
+    input: {
+      paymentId: string;
+      deliveryId: string;
+      amount: number;
+      currency: RefundDto["currency"];
+      idempotencyKey: string;
+      reasonCode?: string | null;
+      reason?: string | null;
+      status?: RefundDto["status"];
+    },
+    _client?: unknown,
+  ): Promise<RefundDto> {
+    if (this.refundsByKey.has(input.idempotencyKey)) {
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      });
+    }
     const refund: RefundDto = {
       id: randomUUID(),
       paymentId: input.paymentId,
