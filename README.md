@@ -45,6 +45,25 @@ Required to start the HTTP server today:
 - `NODE_ENV`
 - `PORT`
 
+### Production deployment (`NODE_ENV=production`)
+
+The server **refuses to start** in production when development-only settings are active. Configure real integrations instead of `.env.example` defaults.
+
+| Variable                       | Production requirement                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `PAYMENT_GATEWAY`              | Must be `cashfree` (not `stub`) with `CASHFREE_ENABLED=true` and sandbox credentials |
+| `SMS_PROVIDER`                 | Must be `msg91` or `twilio` with full credentials (not `mock`)                       |
+| `ENABLE_MOCK_PROVIDER_ADAPTER` | Must be `false`                                                                      |
+| `ENABLE_DEV_DELIVERY_SIMULATE` | Must be `false`                                                                      |
+| `EXPOSE_OTP_FOR_CERTIFICATION` | Must be `false`                                                                      |
+| `ORCHESTRATION_MOCK_ONLY`      | Must be `false`                                                                      |
+| `SMS_OTP_RECIPIENT_OVERRIDE`   | Must be unset                                                                        |
+| `SHIPROCKET_BOOKING_ENABLED`   | Keep `false` until booking is explicitly approved                                    |
+
+Local and test environments (`NODE_ENV=development` or `test`) may keep stub payment, mock SMS, and certification flags as documented in `.env.example`.
+
+**Staging on a public URL:** A service running with `NODE_ENV=development` (or `test`) does **not** receive the production startup safeguards above. Do not lower `NODE_ENV` on a production-like public host just to enable delivery simulation, mock providers, or stub payments. Use an **isolated staging** deployment (network or access controls, non-customer data) and treat it as non-production.
+
 ### Supabase PostgreSQL
 
 - `DATABASE_URL` — pooled runtime URL (Supabase pooler, typically port `6543`, often with `?pgbouncer=true`)

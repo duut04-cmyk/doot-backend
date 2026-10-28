@@ -13,6 +13,15 @@ import type { DeliveryWithRelations } from "./delivery.repository.js";
 import { toPhoneResponse } from "../../core/phone/phone.js";
 import { decimalToNumber } from "./delivery.types.js";
 import type {
+  PaymentAttemptDto,
+  PaymentDto,
+  RefundDto,
+} from "../payment/payment.types.js";
+import {
+  findCancellationLinkedRefund,
+  mapPaymentHistorySection,
+} from "./delivery-history-payment.mapper.js";
+import type {
   DeliveryHistoryDetail,
   OtpHistoryMetadata,
 } from "./delivery-history.types.js";
@@ -91,10 +100,17 @@ function mapOrchestration(
   };
 }
 
-function mapCancellation(cancellation: DeliveryCancellationDto | null) {
+function mapCancellation(
+  cancellation: DeliveryCancellationDto | null,
+  paymentRefunds: RefundDto[],
+) {
   if (!cancellation) {
     return null;
   }
+  const linked =
+    cancellation.status === "CANCELLED"
+      ? findCancellationLinkedRefund(cancellation.id, paymentRefunds)
+      : null;
   return {
     id: cancellation.id,
     status: cancellation.status,
@@ -103,6 +119,19 @@ function mapCancellation(cancellation: DeliveryCancellationDto | null) {
     requestedAt: cancellation.requestedAt.toISOString(),
     cancelledAt: cancellation.cancelledAt?.toISOString() ?? null,
     providerCancellationReference: cancellation.providerCancellationReference,
+    refund: linked
+      ? {
+          id: linked.id,
+          amount: linked.amount,
+          currency: linked.currency,
+          status: linked.status,
+          gatewayRefundId: linked.gatewayRefundId,
+          gatewayRefundReference: linked.gatewayRefundReference,
+          requestedAt: linked.requestedAt.toISOString(),
+          processedAt: linked.processedAt?.toISOString() ?? null,
+          policy: "FULL_REMAINING_PREPAID" as const,
+        }
+      : null,
   };
 }
 
@@ -146,6 +175,9 @@ export function toDeliveryHistoryDetail(input: {
   deliveryOtp: DeliveryOtpDto | null;
   rating: DeliveryRatingDto | null;
   feedback: DeliveryFeedbackDto | null;
+  payment: PaymentDto | null;
+  paymentAttempts: PaymentAttemptDto[];
+  paymentRefunds: RefundDto[];
 }): DeliveryHistoryDetail {
   const detail = input.delivery;
   const driverResponse = toAdminDriverResponse(input.role, input.driver);
@@ -230,7 +262,12 @@ export function toDeliveryHistoryDetail(input: {
     booking: mapBooking(input.booking),
     driver: driverResponse as Record<string, unknown>,
     tracking: mapTracking(input.latestTracking, input.trackingHistory),
-    cancellation: mapCancellation(input.cancellation),
+    cancellation: mapCancellation(input.cancellation, input.paymentRefunds),
+    payment: mapPaymentHistorySection({
+      payment: input.payment,
+      attempts: input.paymentAttempts,
+      refunds: input.paymentRefunds,
+    }),
     otp: {
       pickup: mapOtpMetadata(input.pickupOtp),
       delivery: mapOtpMetadata(input.deliveryOtp),

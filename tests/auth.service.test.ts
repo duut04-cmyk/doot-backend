@@ -48,9 +48,7 @@ describe("AuthService", () => {
       expect(user.email).toBe("john@example.com");
       expect(user.passwordHash).toBeTruthy();
       expect(user.passwordHash).not.toBe("StrongPassword123!");
-      expect(await verifyPassword("StrongPassword123!", user.passwordHash!)).toBe(
-        true,
-      );
+      expect(await verifyPassword("StrongPassword123!", user.passwordHash!)).toBe(true);
       expect(user.emailVerified).toBe(false);
 
       const otp = repository.otps[0];
@@ -61,11 +59,22 @@ describe("AuthService", () => {
       expect(await verifyOtpHash(sentEmails[0].otp, otp.otpHash)).toBe(true);
 
       const expectedExpiry =
-        otp.createdAt.getTime() +
-        EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES * 60 * 1000;
-      expect(Math.abs(otp.expiresAt.getTime() - expectedExpiry)).toBeLessThan(
-        2000,
-      );
+        otp.createdAt.getTime() + EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES * 60 * 1000;
+      expect(Math.abs(otp.expiresAt.getTime() - expectedExpiry)).toBeLessThan(2000);
+    });
+
+    it("rejects internal test harness email domains", async () => {
+      await expect(
+        service.signup({
+          name: "Harness",
+          email: "cashfree-cert@doot.test",
+          password: "StrongPassword123!",
+        }),
+      ).rejects.toMatchObject({
+        code: ErrorCodes.VALIDATION_ERROR,
+        statusCode: 422,
+      });
+      expect(repository.users).toHaveLength(0);
     });
 
     it("rejects a verified duplicate email", async () => {
@@ -104,14 +113,10 @@ describe("AuthService", () => {
 
       expect(repository.users).toHaveLength(1);
       expect(repository.users[0].name).toBe("Jonathan Doe");
-      expect(repository.otps.filter((otp) => otp.usedAt === null)).toHaveLength(
-        1,
-      );
+      expect(repository.otps.filter((otp) => otp.usedAt === null)).toHaveLength(1);
       expect(sentEmails).toHaveLength(2);
       expect(sentEmails[1].otp).not.toBe(firstOtp);
-      expect(await verifyOtpHash(firstOtp, repository.otps[0].otpHash)).toBe(
-        true,
-      );
+      expect(await verifyOtpHash(firstOtp, repository.otps[0].otpHash)).toBe(true);
       expect(repository.otps[0].usedAt).not.toBeNull();
     });
 

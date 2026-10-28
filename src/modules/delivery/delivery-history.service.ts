@@ -33,6 +33,10 @@ import {
   trackingRepository,
   type ITrackingRepository,
 } from "../tracking/tracking.repository.js";
+import {
+  paymentRepository,
+  type IPaymentRepository,
+} from "../payment/payment.repository.js";
 
 const TRACKING_HISTORY_LIMIT = 20;
 
@@ -47,6 +51,7 @@ export class DeliveryHistoryService {
     private readonly otpRepo: IOtpRepository = otpRepository,
     private readonly ratingRepo: IRatingRepository = ratingRepository,
     private readonly feedbackRepo: IFeedbackRepository = feedbackRepository,
+    private readonly paymentRepo: IPaymentRepository = paymentRepository,
   ) {}
 
   async getHistoryDetail(input: {
@@ -72,6 +77,7 @@ export class DeliveryHistoryService {
       otps,
       rating,
       feedback,
+      payment,
     ] = await Promise.all([
       this.deliveryRepo.findStatusEvents(input.deliveryId),
       this.orchestrationRepo.findSelectedOptionForDelivery(input.deliveryId),
@@ -83,7 +89,15 @@ export class DeliveryHistoryService {
       this.otpRepo.listByDeliveryId(input.deliveryId),
       this.ratingRepo.findByDeliveryId(input.deliveryId),
       this.feedbackRepo.findByDeliveryId(input.deliveryId),
+      this.paymentRepo.findByDeliveryId(input.deliveryId),
     ]);
+
+    const [paymentAttempts, paymentRefunds] = payment
+      ? await Promise.all([
+          this.paymentRepo.listAttemptsByPaymentId(payment.id),
+          this.paymentRepo.listRefundsByDeliveryId(input.deliveryId),
+        ])
+      : [[], []];
 
     const pickupOtp =
       otps.find((otp) => otp.type === "PICKUP" && otp.consumedAt) ??
@@ -108,6 +122,9 @@ export class DeliveryHistoryService {
       deliveryOtp,
       rating,
       feedback,
+      payment,
+      paymentAttempts,
+      paymentRefunds,
     });
 
     return {

@@ -156,6 +156,15 @@ const envSchema = z
       .optional()
       .default(false),
 
+    /**
+     * Certification scripts only: include `_testOtp` in OTP API responses.
+     * Never enable in production.
+     */
+    EXPOSE_OTP_FOR_CERTIFICATION: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
     /** Wall-clock budget for evaluating all providers during orchestration (ms). */
     ORCHESTRATION_MAX_DURATION_MS: z.coerce.number().int().positive().optional(),
 
@@ -279,6 +288,53 @@ const envSchema = z
       });
     }
 
+    if (data.NODE_ENV === "production") {
+      if (data.PAYMENT_GATEWAY === "stub") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["PAYMENT_GATEWAY"],
+          message:
+            "PAYMENT_GATEWAY=stub is not allowed in production; set PAYMENT_GATEWAY=cashfree with Cashfree credentials",
+        });
+      }
+      if (data.SMS_PROVIDER === "mock") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SMS_PROVIDER"],
+          message:
+            "SMS_PROVIDER=mock is not allowed in production; configure msg91 or twilio with credentials",
+        });
+      }
+      if (data.ENABLE_MOCK_PROVIDER_ADAPTER) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ENABLE_MOCK_PROVIDER_ADAPTER"],
+          message: "ENABLE_MOCK_PROVIDER_ADAPTER must be false in production",
+        });
+      }
+      if (data.ENABLE_DEV_DELIVERY_SIMULATE) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ENABLE_DEV_DELIVERY_SIMULATE"],
+          message: "ENABLE_DEV_DELIVERY_SIMULATE must be false in production",
+        });
+      }
+      if (data.EXPOSE_OTP_FOR_CERTIFICATION) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["EXPOSE_OTP_FOR_CERTIFICATION"],
+          message: "EXPOSE_OTP_FOR_CERTIFICATION must be false in production",
+        });
+      }
+      if (data.ORCHESTRATION_MOCK_ONLY) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["ORCHESTRATION_MOCK_ONLY"],
+          message: "ORCHESTRATION_MOCK_ONLY must be false in production",
+        });
+      }
+    }
+
     if (data.SMS_PROVIDER === "twilio" && data.NODE_ENV !== "test") {
       const twilioFields = [
         ["TWILIO_ACCOUNT_SID", data.TWILIO_ACCOUNT_SID],
@@ -316,6 +372,40 @@ const envSchema = z
             code: "custom",
             path: [field],
             message: `${field} is required when MSG91_ENABLED is true`,
+          });
+        }
+      }
+    }
+
+    if (data.SMS_PROVIDER === "msg91" && data.NODE_ENV === "production") {
+      if (!data.MSG91_ENABLED) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["MSG91_ENABLED"],
+          message:
+            "MSG91_ENABLED must be true when SMS_PROVIDER is msg91 in production",
+        });
+      }
+
+      const pickupTemplateId =
+        data.MSG91_PICKUP_OTP_TEMPLATE_ID ?? data.MSG91_PICKUP_OTP_FLOW_ID;
+      const deliveryTemplateId =
+        data.MSG91_DELIVERY_OTP_TEMPLATE_ID ?? data.MSG91_DELIVERY_OTP_FLOW_ID;
+
+      const requiredMsg91OperationalFields = [
+        ["MSG91_AUTH_KEY", data.MSG91_AUTH_KEY],
+        ["MSG91_SENDER_ID", data.MSG91_SENDER_ID],
+        ["MSG91_PICKUP_OTP_TEMPLATE_ID", pickupTemplateId],
+        ["MSG91_DELIVERY_OTP_TEMPLATE_ID", deliveryTemplateId],
+        ["MSG91_API_BASE_URL", data.MSG91_API_BASE_URL],
+      ] as const;
+
+      for (const [field, value] of requiredMsg91OperationalFields) {
+        if (!value) {
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: `${field} is required when SMS_PROVIDER is msg91 in production`,
           });
         }
       }

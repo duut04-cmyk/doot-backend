@@ -1,6 +1,7 @@
 import type { DeliveryOtpType, DeliveryStatus, UserRole } from "@prisma/client";
 import { logger } from "../../config/logger.js";
 import {
+  env,
   OTP_EXPIRY_SECONDS,
   OTP_GENERATION_COOLDOWN_SECONDS,
   OTP_MAX_ATTEMPTS,
@@ -119,10 +120,7 @@ export class OtpService {
         deliveryId: input.deliveryId,
         type: "PICKUP" as const,
         expiresAt: expiresAt.toISOString(),
-        ...(process.env.NODE_ENV === "test" ||
-        process.env.EXPOSE_OTP_FOR_CERTIFICATION === "true"
-          ? { _testOtp: code }
-          : {}),
+        ...(this.includeTestOtpInApiResponse() ? { _testOtp: code } : {}),
       },
     };
   }
@@ -231,10 +229,7 @@ export class OtpService {
         deliveryId: input.deliveryId,
         type: "DELIVERY" as const,
         expiresAt: expiresAt.toISOString(),
-        ...(process.env.NODE_ENV === "test" ||
-        process.env.EXPOSE_OTP_FOR_CERTIFICATION === "true"
-          ? { _testOtp: code }
-          : {}),
+        ...(this.includeTestOtpInApiResponse() ? { _testOtp: code } : {}),
       },
     };
   }
@@ -279,6 +274,17 @@ export class OtpService {
       success: true as const,
       data: { deliveryId: input.deliveryId, status: "DELIVERED" as const },
     };
+  }
+
+  /** Uses parsed env only — raw process.env must not expose OTPs on operational APIs. */
+  private includeTestOtpInApiResponse(): boolean {
+    if (env.NODE_ENV === "production") {
+      return false;
+    }
+    if (env.NODE_ENV === "test") {
+      return true;
+    }
+    return env.EXPOSE_OTP_FOR_CERTIFICATION;
   }
 
   private async createOperationalOtpRecord(input: {

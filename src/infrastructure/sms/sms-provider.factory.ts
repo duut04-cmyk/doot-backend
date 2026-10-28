@@ -14,6 +14,9 @@ class MockSmsProvider implements SmsProvider {
   readonly name = "MOCK";
 
   async sendMessage() {
+    if (env.NODE_ENV === "production") {
+      return { outcome: "FAILED" as const };
+    }
     return { outcome: "ACCEPTED" as const };
   }
 }
@@ -22,6 +25,9 @@ class NoopSmsProvider implements SmsProvider {
   readonly name = "NOOP";
 
   async sendMessage() {
+    if (env.NODE_ENV === "production") {
+      return { outcome: "FAILED" as const };
+    }
     return { outcome: "ACCEPTED" as const };
   }
 }

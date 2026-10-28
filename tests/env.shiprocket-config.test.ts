@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { envSchema } from "../src/config/env.js";
+import { baseSafeProductionEnv } from "./helpers/safe-production-env.js";
 
 const baseProductionEnv = {
-  NODE_ENV: "production",
-  JWT_ACCESS_SECRET: "x".repeat(32),
+  ...baseSafeProductionEnv,
   SHIPROCKET_ENABLED: "true",
   SHIPROCKET_API_BASE_URL: "https://api-sandbox.shiprocket.in",
   SHIPROCKET_AUTH_EMAIL: "sandbox@example.com",

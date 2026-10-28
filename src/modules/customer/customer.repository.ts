@@ -5,6 +5,7 @@ import {
   RECENT_DELIVERIES_LIMIT,
 } from "./customer.constants.js";
 import type { CustomerStatsDto } from "./customer.types.js";
+import { INTERNAL_TEST_EMAIL_DOMAIN } from "./customer-test-users.js";
 
 export type CustomerDbClient =
   Prisma.TransactionClient | ReturnType<typeof getPrismaClient>;
@@ -32,6 +33,10 @@ export type CustomerListFilters = {
 function buildCustomerWhere(filters: CustomerListFilters): Prisma.UserWhereInput {
   const where: Prisma.UserWhereInput = {
     role: "CUSTOMER",
+    // Exclude cert/harness accounts (`*@doot.test`); payments stay on Payment rows.
+    NOT: {
+      email: { endsWith: `@${INTERNAL_TEST_EMAIL_DOMAIN}`, mode: "insensitive" },
+    },
   };
 
   if (filters.status) {
@@ -45,10 +50,14 @@ function buildCustomerWhere(filters: CustomerListFilters): Prisma.UserWhereInput
   }
 
   if (filters.search) {
-    where.OR = [
-      { name: { contains: filters.search, mode: "insensitive" } },
-      { email: { contains: filters.search, mode: "insensitive" } },
-      { phoneNumber: { contains: filters.search, mode: "insensitive" } },
+    where.AND = [
+      {
+        OR: [
+          { name: { contains: filters.search, mode: "insensitive" } },
+          { email: { contains: filters.search, mode: "insensitive" } },
+          { phoneNumber: { contains: filters.search, mode: "insensitive" } },
+        ],
+      },
     ];
   }
 
@@ -105,6 +114,12 @@ export class CustomerRepository implements ICustomerRepository {
         id: customerId,
         role: "CUSTOMER",
         status: { not: "DELETED" },
+        NOT: {
+          email: {
+            endsWith: `@${INTERNAL_TEST_EMAIL_DOMAIN}`,
+            mode: "insensitive",
+          },
+        },
       },
       select: customerSelect,
     });
