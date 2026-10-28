@@ -20,6 +20,7 @@ import {
   MAX_OTP_ATTEMPTS,
   OTP_RESEND_COOLDOWN_SECONDS,
 } from "./auth.constants.js";
+import { assertAppRegistrationEmail } from "./auth-registration-guard.js";
 import {
   buildPasswordResetVerificationTokenExpiry,
   buildRefreshTokenExpiry,
@@ -85,6 +86,7 @@ export class AuthService {
     const phoneNumber = input.phoneNumber?.trim() || null;
 
     logger.info({ emailDomain: emailDomain(email) }, "signup requested");
+    assertAppRegistrationEmail(email);
 
     const existing = await this.repository.findUserByEmail(email);
 
@@ -363,6 +365,7 @@ export class AuthService {
       { emailDomain: emailDomain(email), provider: "google" },
       "google_login_requested",
     );
+    assertAppRegistrationEmail(email);
 
     const existingOAuth = await this.repository.findOAuthAccount(
       "GOOGLE",

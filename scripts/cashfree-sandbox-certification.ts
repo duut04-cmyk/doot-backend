@@ -73,6 +73,19 @@ async function api(
 }
 
 async function ensureUser(prisma: PrismaClient, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail.endsWith("@doot.test")) {
+    throw new Error(`Cert harness may only seed users on @doot.test (got ${email}).`);
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_INTERNAL_TEST_USER_SEED !== "true"
+  ) {
+    throw new Error(
+      "Refusing to seed cert users in production. Set ALLOW_INTERNAL_TEST_USER_SEED=true to override.",
+    );
+  }
+
   const passwordHash = await hashPassword("CashfreeCert123!@#");
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -270,7 +283,9 @@ async function main() {
     token = generateAccessToken(delivery.customerId);
     recorder.record("Resume delivery", "PASS", "LIVE_API", deliveryId);
   } else {
-    const customerEmail = `cashfree-e2e-${Date.now()}-${randomUUID().slice(0, 8)}@doot.test`;
+    // Reuse one harness account so admin customer lists are not flooded.
+    // `@doot.test` emails are excluded from admin customer listing.
+    const customerEmail = "cashfree-cert@doot.test";
     const customerId = await ensureUser(prisma, customerEmail);
     token = generateAccessToken(customerId);
 

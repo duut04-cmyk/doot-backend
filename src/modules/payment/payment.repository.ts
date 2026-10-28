@@ -187,6 +187,8 @@ export interface IPaymentRepository {
   findById(paymentId: string, client?: PaymentDbClient): Promise<PaymentDto | null>;
   findByGatewayOrderId(gatewayOrderId: string): Promise<PaymentDto | null>;
   findLatestAttempt(paymentId: string): Promise<PaymentAttemptDto | null>;
+  listAttemptsByPaymentId(paymentId: string): Promise<PaymentAttemptDto[]>;
+  listRefundsByDeliveryId(deliveryId: string): Promise<RefundDto[]>;
   findRefundById(refundId: string, client?: PaymentDbClient): Promise<RefundDto | null>;
   findRefundByIdempotencyKey(key: string): Promise<RefundDto | null>;
   findRefundByGatewayRefundId(gatewayRefundId: string): Promise<RefundDto | null>;
@@ -335,6 +337,22 @@ export class PrismaPaymentRepository implements IPaymentRepository {
       orderBy: { attemptNumber: "desc" },
     });
     return row ? mapAttempt(row) : null;
+  }
+
+  async listAttemptsByPaymentId(paymentId: string): Promise<PaymentAttemptDto[]> {
+    const rows = await getPrismaClient().paymentAttempt.findMany({
+      where: { paymentId },
+      orderBy: { attemptNumber: "desc" },
+    });
+    return rows.map(mapAttempt);
+  }
+
+  async listRefundsByDeliveryId(deliveryId: string): Promise<RefundDto[]> {
+    const rows = await getPrismaClient().refund.findMany({
+      where: { deliveryId },
+      orderBy: { requestedAt: "asc" },
+    });
+    return rows.map(mapRefund);
   }
 
   async findRefundById(
