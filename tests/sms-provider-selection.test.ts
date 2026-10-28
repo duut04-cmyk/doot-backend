@@ -45,4 +45,34 @@ describe("resolveOperationalSmsProvider", () => {
     const { resolveOperationalSmsProvider } = await loadFactory();
     expect(resolveOperationalSmsProvider().name).toBe("MSG91");
   });
+
+  it("does not report ACCEPTED from NOOP fallback in production", async () => {
+    vi.resetModules();
+    vi.doMock("../src/config/env.js", () => ({
+      env: {
+        NODE_ENV: "production",
+        SMS_PROVIDER: "msg91",
+        MSG91_API_BASE_URL: "https://api.msg91.com/api/v5",
+        MSG91_TIMEOUT_MS: 10_000,
+      },
+      getMsg91AccountTemplateId: () => undefined,
+      getMsg91PickupTemplateId: () => undefined,
+      getMsg91DeliveryTemplateId: () => undefined,
+      isMsg91Configured: () => false,
+      isTwilioConfigured: () => false,
+    }));
+    const { resolveOperationalSmsProvider } =
+      await import("../src/infrastructure/sms/sms-provider.factory.js");
+    const provider = resolveOperationalSmsProvider();
+    expect(provider.name).toBe("NOOP");
+    const result = await provider.sendMessage({
+      notificationType: "PICKUP_OTP",
+      recipientMobile: "919876543210",
+      templateVariables: { otp: "123456" },
+      correlationId: "corr-1",
+      deliveryReference: "DEL-1",
+    });
+    expect(result.outcome).toBe("FAILED");
+    vi.doUnmock("../src/config/env.js");
+  });
 });

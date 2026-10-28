@@ -110,7 +110,9 @@ export type DeliveryHistoryDetail = {
     requestedAt: string;
     cancelledAt: string | null;
     providerCancellationReference: string | null;
+    refund: DeliveryHistoryCancellationRefund | null;
   } | null;
+  payment: DeliveryHistoryPayment | null;
   otp: {
     pickup: OtpHistoryMetadata | null;
     delivery: OtpHistoryMetadata | null;
@@ -130,6 +132,77 @@ export type DeliveryHistoryDetail = {
     comment: string | null;
     submittedAt: string;
   } | null;
+};
+
+export type DeliveryHistoryPricingBreakdown = {
+  providerQuoteAmount: number;
+  platformFeePercent: number;
+  platformFeeAmount: number;
+  subtotal: number;
+  gstPercent: number;
+  gstAmount: number;
+  customerPayableAmount: number;
+  currency: string;
+};
+
+export type DeliveryHistoryPaymentAttempt = {
+  id: string;
+  attemptNumber: number;
+  status: string;
+  amount: number;
+  currency: string;
+  gatewayPaymentId: string | null;
+  gatewayOrderId: string | null;
+  paymentMethod: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+export type DeliveryHistoryPaymentRefund = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reasonCode: string | null;
+  reason: string | null;
+  gatewayRefundId: string | null;
+  gatewayRefundReference: string | null;
+  idempotencyKey: string;
+  requestedAt: string;
+  processedAt: string | null;
+};
+
+export type DeliveryHistoryPayment = {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  gateway: string;
+  gatewayOrderId: string | null;
+  gatewayPaymentSessionId: string | null;
+  gatewayPaymentId: string | null;
+  paidAt: string | null;
+  failedAt: string | null;
+  expiredAt: string | null;
+  refundedAmount: number;
+  pricingBreakdown: DeliveryHistoryPricingBreakdown;
+  attempts: DeliveryHistoryPaymentAttempt[];
+  refunds: DeliveryHistoryPaymentRefund[];
+};
+
+export type DeliveryHistoryCancellationRefund = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  gatewayRefundId: string | null;
+  gatewayRefundReference: string | null;
+  requestedAt: string;
+  processedAt: string | null;
+  /** Prepaid cancellations refund remaining balance; no platform retention fee. */
+  policy: "FULL_REMAINING_PREPAID";
 };
 
 export type OtpHistoryMetadata = {

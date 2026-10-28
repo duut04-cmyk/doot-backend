@@ -34,7 +34,9 @@ Redeploy after changing env.
 
 ## 3. Render backend — delivery simulation (`/dev/advance`)
 
-Simulation is **opt-in** via **`ENABLE_DEV_DELIVERY_SIMULATE=true`** (works in production when set).
+Simulation is **opt-in** via **`ENABLE_DEV_DELIVERY_SIMULATE=true`** for backends where **`NODE_ENV` is not `production`**. When **`NODE_ENV=production`**, startup validation rejects this flag.
+
+For hosted `/dev/advance` testing, use a **dedicated isolated staging** API (access-controlled, not customer-facing) with explicit non-production env flags. Do **not** weaken `NODE_ENV` on a production-like public service; see the backend README “Staging on a public URL” note.
 
 Requirements for a delivery:
 
