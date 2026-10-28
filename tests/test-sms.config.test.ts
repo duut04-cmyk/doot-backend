@@ -23,10 +23,16 @@ describe("test SMS endpoint config", () => {
   });
 
   it("never enables in production even when env flag is true", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("ENABLE_TEST_SMS_ENDPOINT", "true");
+    vi.resetModules();
+    vi.doMock("../src/config/env.js", () => ({
+      env: {
+        NODE_ENV: "production",
+        ENABLE_TEST_SMS_ENDPOINT: true,
+      },
+    }));
     const { isTestSmsEndpointEnabled } =
       await import("../src/modules/test-sms/test-sms.config.js");
     expect(isTestSmsEndpointEnabled()).toBe(false);
+    vi.doUnmock("../src/config/env.js");
   });
 });
