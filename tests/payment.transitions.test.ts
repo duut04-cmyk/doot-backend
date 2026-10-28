@@ -9,6 +9,7 @@ describe("payment transitions", () => {
   it("allows CREATED → PENDING → PAID", () => {
     expect(canTransitionPayment("CREATED", "PENDING")).toBe(true);
     expect(canTransitionPayment("PENDING", "PAID")).toBe(true);
+    expect(canTransitionPayment("CREATED", "PAID")).toBe(true);
   });
 
   it("allows PAID → PARTIALLY_REFUNDED → REFUNDED", () => {

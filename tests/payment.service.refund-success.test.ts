@@ -71,6 +71,41 @@ describe("PaymentService.markRefundSuccessful", () => {
     expect(paymentRepo.ledger.size).toBe(1);
   });
 
+  it("finalizes two distinct partial refunds concurrently without over-crediting", async () => {
+    const refund40 = await paymentRepo.createRefund({
+      paymentId,
+      deliveryId,
+      amount: 40,
+      currency: "INR",
+      idempotencyKey: "partial-40",
+      status: "PENDING",
+    });
+    const refund60 = await paymentRepo.createRefund({
+      paymentId,
+      deliveryId,
+      amount: 60,
+      currency: "INR",
+      idempotencyKey: "partial-60",
+      status: "PENDING",
+    });
+
+    await Promise.all([
+      service.markRefundSuccessful({
+        refundId: refund40.id,
+        gatewayRefundId: "cf-40",
+      }),
+      service.markRefundSuccessful({
+        refundId: refund60.id,
+        gatewayRefundId: "cf-60",
+      }),
+    ]);
+
+    const payment = await paymentRepo.findById(paymentId);
+    expect(payment?.refundedAmount).toBe(100);
+    expect(payment?.status).toBe("REFUNDED");
+    expect(paymentRepo.ledger.size).toBe(2);
+  });
+
   it("handles concurrent duplicate webhooks without double increment", async () => {
     await Promise.all([
       service.markRefundSuccessful({ refundId, gatewayRefundId: "cf-ref-1" }),

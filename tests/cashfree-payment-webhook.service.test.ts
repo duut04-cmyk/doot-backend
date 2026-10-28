@@ -48,6 +48,38 @@ describe("CashfreePaymentWebhookService", () => {
     return new CashfreePaymentWebhookService(paymentRepo, webhookService);
   }
 
+  async function seedCreatedPaymentWithOrder(orderId: string, amount: number) {
+    await paymentRepo.createPayment({
+      deliveryId: randomUUID(),
+      customerId: randomUUID(),
+      amount,
+      currency: "INR",
+      gateway: "CASHFREE",
+      pricingSource: {
+        orchestrationRequestId: randomUUID(),
+        orchestrationOptionId: randomUUID(),
+        quoteSnapshot: { amount, currency: "INR" },
+      },
+    });
+    const created = [...paymentRepo.payments.values()][0]!;
+    await paymentRepo.updatePaymentStatus({
+      paymentId: created.id,
+      fromStatuses: ["CREATED"],
+      toStatus: "CREATED",
+      gatewayOrderId: orderId,
+      gatewayPaymentSessionId: "sess",
+    });
+    await paymentRepo.createAttempt({
+      paymentId: created.id,
+      attemptNumber: 1,
+      amount,
+      currency: "INR",
+      gatewayOrderId: orderId,
+      status: "CREATED",
+    });
+    return created.id;
+  }
+
   async function seedPendingPayment(orderId: string, amount: number) {
     await paymentRepo.createPayment({
       deliveryId: randomUUID(),
@@ -90,6 +122,33 @@ describe("CashfreePaymentWebhookService", () => {
     });
     return { rawBody, timestamp, signature };
   }
+
+  it("processes success webhook when payment is still CREATED", async () => {
+    const orderId = "DOOT-order-created";
+    const paymentId = await seedCreatedPaymentWithOrder(orderId, 100);
+    const handler = buildHandler();
+    const payload = {
+      type: "PAYMENT_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: orderId, order_amount: 100, order_currency: "INR" },
+        payment: {
+          cf_payment_id: "cf-created",
+          payment_status: "SUCCESS",
+          payment_amount: 100,
+        },
+      },
+    };
+    const signed = signedBody(payload);
+    await handler.handle({
+      requestId: randomUUID(),
+      rawBody: signed.rawBody,
+      signature: signed.signature,
+      timestamp: signed.timestamp,
+    });
+    const payment = await paymentRepo.findById(paymentId);
+    expect(payment?.status).toBe("PAID");
+    expect(paymentRepo.ledger.size).toBe(1);
+  });
 
   it("processes success webhook and duplicate is idempotent", async () => {
     const orderId = "DOOT-order-1";
@@ -136,6 +195,54 @@ describe("CashfreePaymentWebhookService", () => {
         timestamp: "1",
       }),
     ).rejects.toMatchObject({ code: ErrorCodes.CASHFREE_WEBHOOK_SIGNATURE_INVALID });
+  });
+
+  it("rejects unknown Cashfree order", async () => {
+    const handler = buildHandler();
+    const signed = signedBody({
+      type: "PAYMENT_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: "DOOT-missing", order_amount: 10, order_currency: "INR" },
+        payment: {
+          payment_status: "SUCCESS",
+          payment_amount: 10,
+          cf_payment_id: "cf-x",
+        },
+      },
+    });
+    await expect(
+      handler.handle({
+        requestId: randomUUID(),
+        rawBody: signed.rawBody,
+        signature: signed.signature,
+        timestamp: signed.timestamp,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.PAYMENT_NOT_FOUND });
+  });
+
+  it("rejects currency mismatch", async () => {
+    const orderId = "DOOT-order-currency";
+    await seedPendingPayment(orderId, 100);
+    const handler = buildHandler();
+    const signed = signedBody({
+      type: "PAYMENT_SUCCESS_WEBHOOK",
+      data: {
+        order: { order_id: orderId, order_amount: 100, order_currency: "USD" },
+        payment: {
+          payment_status: "SUCCESS",
+          payment_amount: 100,
+          cf_payment_id: "cf-curr",
+        },
+      },
+    });
+    await expect(
+      handler.handle({
+        requestId: randomUUID(),
+        rawBody: signed.rawBody,
+        signature: signed.signature,
+        timestamp: signed.timestamp,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCodes.PAYMENT_INVALID_AMOUNT });
   });
 
   it("rejects amount mismatch", async () => {

@@ -190,7 +190,10 @@ export interface IPaymentRepository {
   listAttemptsByPaymentId(paymentId: string): Promise<PaymentAttemptDto[]>;
   listRefundsByDeliveryId(deliveryId: string): Promise<RefundDto[]>;
   findRefundById(refundId: string, client?: PaymentDbClient): Promise<RefundDto | null>;
-  findRefundByIdempotencyKey(key: string): Promise<RefundDto | null>;
+  findRefundByIdempotencyKey(
+    key: string,
+    client?: PaymentDbClient,
+  ): Promise<RefundDto | null>;
   findRefundByGatewayRefundId(gatewayRefundId: string): Promise<RefundDto | null>;
   findLedgerByIdempotencyKey(
     key: string,
@@ -200,7 +203,8 @@ export interface IPaymentRepository {
     paymentId: string,
     client?: PaymentDbClient,
   ): Promise<number>;
-  sumActiveRefundAmounts(paymentId: string): Promise<number>;
+  sumActiveRefundAmounts(paymentId: string, client?: PaymentDbClient): Promise<number>;
+  lockPaymentForUpdate(paymentId: string, client: PaymentDbClient): Promise<void>;
   findCreateIdempotency(
     customerId: string,
     key: string,
@@ -363,8 +367,11 @@ export class PrismaPaymentRepository implements IPaymentRepository {
     return row ? mapRefund(row) : null;
   }
 
-  async findRefundByIdempotencyKey(key: string): Promise<RefundDto | null> {
-    const row = await getPrismaClient().refund.findUnique({
+  async findRefundByIdempotencyKey(
+    key: string,
+    client?: PaymentDbClient,
+  ): Promise<RefundDto | null> {
+    const row = await this.db(client).refund.findUnique({
       where: { idempotencyKey: key },
     });
     return row ? mapRefund(row) : null;
@@ -402,8 +409,11 @@ export class PrismaPaymentRepository implements IPaymentRepository {
     return rows.reduce((sum, row) => sum + moneyToNumber(row.amount), 0);
   }
 
-  async sumActiveRefundAmounts(paymentId: string): Promise<number> {
-    const rows = await getPrismaClient().refund.findMany({
+  async sumActiveRefundAmounts(
+    paymentId: string,
+    client?: PaymentDbClient,
+  ): Promise<number> {
+    const rows = await this.db(client).refund.findMany({
       where: {
         paymentId,
         status: { in: ["REQUESTED", "PENDING", "SUCCESS"] },
@@ -411,6 +421,15 @@ export class PrismaPaymentRepository implements IPaymentRepository {
       select: { amount: true },
     });
     return rows.reduce((sum, row) => sum + moneyToNumber(row.amount), 0);
+  }
+
+  async lockPaymentForUpdate(
+    paymentId: string,
+    client: PaymentDbClient,
+  ): Promise<void> {
+    await this.db(client).$queryRaw`
+      SELECT id FROM "Payment" WHERE id = ${paymentId}::uuid FOR UPDATE
+    `;
   }
 
   async findCreateIdempotency(
