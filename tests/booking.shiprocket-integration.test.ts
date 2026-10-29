@@ -97,6 +97,26 @@ describe("Shiprocket booking integration (service workflows)", () => {
           metadata: { shiprocketShipmentId: "999888" },
         };
       }
+      if (input.operation === "getBooking") {
+        return {
+          success: true,
+          outcome: "BOOKED",
+          providerBookingId: "SR-ORDER-1",
+          providerReference: "999888",
+          status: "READY",
+          bookedAt: new Date().toISOString(),
+          estimatedPickupAt: null,
+          estimatedDeliveryAt: null,
+          trackingUrl: null,
+          driver: null,
+          service: null,
+          reason: null,
+          metadata: {
+            shiprocketAwbCode: "AWB999888",
+            shiprocketShipmentId: "999888",
+          },
+        };
+      }
       throw new Error(`Unexpected operation ${input.operation}`);
     });
 
@@ -125,6 +145,9 @@ describe("Shiprocket booking integration (service workflows)", () => {
     expect(unknownBooking.quoteSnapshot.providerMetadata?.shiprocketShipmentId).toBe(
       "999888",
     );
+    expect(
+      unknownBooking.quoteSnapshot.providerMetadata?.shiprocketAwbCode,
+    ).toBeUndefined();
 
     executeMock.mockClear();
 
@@ -137,9 +160,103 @@ describe("Shiprocket booking integration (service workflows)", () => {
     });
 
     expect(reconciled.data.booking.status).toBe("BOOKED");
-    expect(executeMock).not.toHaveBeenCalled();
+    expect(executeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "getBooking", providerCode: "SHIPROCKET" }),
+    );
     const delivery = await deliveryRepo.findById(seeded.deliveryId);
     expect(delivery?.status).toBe("BOOKED");
+  });
+
+  it("does not reconcile UNKNOWN to BOOKED when only shipment id is stored", async () => {
+    executeMock.mockImplementation(async (input: { operation: string }) => {
+      if (input.operation === "getCancellationPolicy") {
+        return {
+          policyKnown: true,
+          cancellable: true,
+          feeKnown: true,
+          feeAmount: { amount: 0, currency: "INR" },
+          feePercent: null,
+          windowKnown: false,
+          cancellableUntil: null,
+          reason: null,
+        };
+      }
+      if (input.operation === "getBooking") {
+        return {
+          success: true,
+          outcome: "BOOKED",
+          providerBookingId: "SR-ORDER-X",
+          providerReference: "888777",
+          status: "NEW",
+          bookedAt: null,
+          estimatedPickupAt: null,
+          estimatedDeliveryAt: null,
+          trackingUrl: null,
+          driver: null,
+          service: null,
+          reason: null,
+          metadata: { shiprocketShipmentId: "888777" },
+        };
+      }
+      throw new Error(`Unexpected operation ${input.operation}`);
+    });
+
+    const seeded = await seedOptionReadyDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      customerId,
+      providerCode: "SHIPROCKET",
+    });
+    await seedPaidPayment({ paymentRepo, deliveryId: seeded.deliveryId, customerId });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["OPTION_READY"],
+      toStatus: "BOOKING",
+      source: "BOOKING",
+      reason: "test",
+    });
+    await bookingRepo.createBookingAttempt({
+      deliveryId: seeded.deliveryId,
+      attemptNumber: 1,
+      orchestrationRequestId: seeded.orchestrationRequestId,
+      orchestrationOptionId: seeded.selectedOptionId,
+      providerId: seeded.providerId,
+      providerServiceId: null,
+      providerCode: "SHIPROCKET",
+      providerServiceCode: "MOCK_BIKE",
+      correlationReference: "DUTT-TEST-BOOKING-SHIPONLY",
+      quotedAmount: 150,
+      quotedCurrency: "INR",
+      providerQuoteId: "Q1",
+      quoteSnapshot: {
+        amount: 150,
+        currency: "INR",
+        providerMetadata: { shiprocketShipmentId: "888777" },
+      },
+      requestId: "req-ship-only",
+    });
+    await bookingRepo.finalizeBooking({
+      bookingId: bookingRepo.bookings[0]!.id,
+      status: "UNKNOWN",
+      providerOrderId: "SR-ORDER-X",
+      providerReference: "888777",
+      unknownOutcome: true,
+      failureCode: ErrorCodes.PROVIDER_BOOKING_UNKNOWN,
+      failureMessage: "AWB pending",
+    });
+
+    await expect(
+      buildBookingService().confirm({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-ship-only-retry",
+        requestHash: hashConfirmRequest(),
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.PROVIDER_BOOKING_RECONCILIATION_REQUIRED,
+    });
   });
 
   it("persists channel order id when createBooking times out at the adapter", async () => {

@@ -224,6 +224,16 @@ const envSchema = z
       z.string().min(1).optional(),
     ),
 
+    SHIPROCKET_WEBHOOK_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    SHIPROCKET_WEBHOOK_API_KEY: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
     /** Active payment gateway: stub (default) or cashfree */
     PAYMENT_GATEWAY: z
       .preprocess(
@@ -448,12 +458,31 @@ const envSchema = z
     }
 
     if (data.SHIPROCKET_BOOKING_ENABLED && data.NODE_ENV !== "test") {
+      if (!data.SHIPROCKET_ENABLED) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_BOOKING_ENABLED"],
+          message:
+            "SHIPROCKET_ENABLED must be true when SHIPROCKET_BOOKING_ENABLED is true",
+        });
+      }
       if (!data.SHIPROCKET_PICKUP_LOCATION) {
         ctx.addIssue({
           code: "custom",
           path: ["SHIPROCKET_PICKUP_LOCATION"],
           message:
             "SHIPROCKET_PICKUP_LOCATION is required when SHIPROCKET_BOOKING_ENABLED is true",
+        });
+      }
+    }
+
+    if (data.SHIPROCKET_WEBHOOK_ENABLED && data.NODE_ENV !== "test") {
+      if (!data.SHIPROCKET_WEBHOOK_API_KEY) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_WEBHOOK_API_KEY"],
+          message:
+            "SHIPROCKET_WEBHOOK_API_KEY is required when SHIPROCKET_WEBHOOK_ENABLED is true",
         });
       }
     }
@@ -637,6 +666,16 @@ export function isCashfreeConfigured(): boolean {
     env.CASHFREE_CLIENT_SECRET &&
     env.CASHFREE_ENVIRONMENT === "sandbox",
   );
+}
+
+export function requireShiprocketWebhookApiKey(): string {
+  if (!env.SHIPROCKET_WEBHOOK_ENABLED) {
+    throw new Error("SHIPROCKET_WEBHOOK_ENABLED is false");
+  }
+  if (!env.SHIPROCKET_WEBHOOK_API_KEY) {
+    throw new Error("SHIPROCKET_WEBHOOK_API_KEY is not configured");
+  }
+  return env.SHIPROCKET_WEBHOOK_API_KEY;
 }
 
 export function requireCashfreeCredentials(): {

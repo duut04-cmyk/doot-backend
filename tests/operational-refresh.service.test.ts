@@ -111,6 +111,12 @@ describe("OperationalRefreshService", () => {
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0]?.[0]?.operation).toBe("getTracking");
+    expect(executeMock.mock.calls[0]?.[0]?.payload).toEqual(
+      expect.objectContaining({
+        providerBookingId: expect.any(String),
+        deliveryReference: expect.any(String),
+      }),
+    );
     expect(result.pollSucceeded).toBe(true);
     expect(driverRepo.assignments).toHaveLength(1);
     expect(trackingRepo.points).toHaveLength(1);

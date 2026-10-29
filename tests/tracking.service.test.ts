@@ -237,4 +237,157 @@ describe("TrackingService", () => {
       code: ErrorCodes.DELIVERY_NOT_FOUND,
     });
   });
+
+  it("does not persist tracking points when provider reports PENDING availability", async () => {
+    executeMock.mockResolvedValue({
+      status: "TRACKING_PENDING",
+      latitude: null,
+      longitude: null,
+      accuracyMeters: null,
+      providerTimestamp: null,
+      receivedAt: new Date().toISOString(),
+      eta: null,
+      trackingUrl: null,
+      driver: null,
+      providerEventId: null,
+      metadata: { trackingAvailability: "PENDING" },
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "ADMIN",
+      requestId: "req-pending-track",
+    });
+
+    expect(trackingRepo.points).toHaveLength(0);
+  });
+
+  it("throws on poll ingest when tracking implies an invalid delivery transition", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await expect(
+      service.ingestFromPoll({
+        deliveryId: seeded.deliveryId,
+        deliveryStatus: "BOOKED",
+        providerBookingId: seeded.bookingId,
+        providerId: seeded.providerId,
+        tracking: {
+          status: "IN TRANSIT",
+          latitude: null,
+          longitude: null,
+          accuracyMeters: null,
+          providerTimestamp: new Date().toISOString(),
+          receivedAt: new Date().toISOString(),
+          eta: null,
+          trackingUrl: null,
+          driver: null,
+          providerEventId: "poll-invalid-transition",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.DELIVERY_INVALID_TRANSITION,
+    });
+    expect(trackingRepo.points).toHaveLength(1);
+  });
+
+  it("webhook ingest skips invalid delivery transitions without throwing", async () => {
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    const providerEventTime = "2026-03-28T10:00:00.000Z";
+    const webhookReceiptTime = "2026-03-28T12:00:00.000Z";
+
+    await service.ingestFromWebhook({
+      deliveryId: seeded.deliveryId,
+      deliveryStatus: "BOOKED",
+      providerBookingId: seeded.bookingId,
+      providerId: seeded.providerId,
+      event: {
+        providerCode: "MOCK",
+        providerEventId: "webhook-invalid-transition",
+        eventType: "TRACKING_UPDATE",
+        providerReference: null,
+        providerBookingId: seeded.providerOrderId,
+        status: "IN TRANSIT",
+        eventTimestamp: providerEventTime,
+        receivedAt: webhookReceiptTime,
+        driver: null,
+        tracking: {
+          status: "IN TRANSIT",
+          latitude: null,
+          longitude: null,
+          eta: null,
+          trackingUrl: null,
+        },
+      },
+    });
+
+    expect(trackingRepo.points).toHaveLength(1);
+    const point = trackingRepo.points[0]!;
+    expect(point.providerTimestamp?.toISOString()).toBe(providerEventTime);
+    expect(point.receivedAt.toISOString()).toBe(webhookReceiptTime);
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("BOOKED");
+  });
+
+  it("does not transition delivery to DELIVERED from provider tracking status alone", async () => {
+    executeMock.mockResolvedValue({
+      status: "Delivered successfully",
+      latitude: null,
+      longitude: null,
+      accuracyMeters: null,
+      providerTimestamp: new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      eta: null,
+      trackingUrl: "https://mock.test/track/delivered",
+      driver: null,
+      providerEventId: "evt-delivered-1",
+      metadata: { trackingAvailability: "AVAILABLE" },
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "IN_TRANSIT",
+      source: "TRACKING",
+      reason: "test",
+    });
+
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      userId: customerId,
+      role: "ADMIN",
+      requestId: "req-delivered-poll",
+    });
+
+    expect(trackingRepo.points).toHaveLength(1);
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("IN_TRANSIT");
+  });
 });

@@ -8,12 +8,18 @@ import {
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
 
 describe("booking provider outcome", () => {
-  it("detects reconciled Shiprocket metadata from AWB or shipment id", () => {
+  it("detects reconciled Shiprocket metadata only when AWB is present", () => {
     expect(providerBookingMetadataReconciled(undefined)).toBe(false);
     expect(providerBookingMetadataReconciled({ shiprocketShipmentId: "123" })).toBe(
-      true,
+      false,
     );
-    expect(providerBookingMetadataReconciled({ shiprocketAwbCode: "AWB1" })).toBe(true);
+    expect(providerBookingMetadataReconciled({ shiprocketAwbCode: "AWB1" })).toBe(
+      false,
+    );
+    expect(providerBookingMetadataReconciled({ shiprocketAwbCode: "NA" })).toBe(false);
+    expect(
+      providerBookingMetadataReconciled({ shiprocketAwbCode: "SR123456789IN" }),
+    ).toBe(true);
   });
 
   it("maps successful adapter result to BOOKED", () => {

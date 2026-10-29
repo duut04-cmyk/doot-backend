@@ -65,6 +65,17 @@ export function resolveOrderShowProbeResult(input: {
     });
   }
 
+  if (input.status === 429) {
+    throw new ProviderAdapterError({
+      providerCode: SHIPROCKET_PROVIDER_CODE,
+      operation: input.operation,
+      category: "PROVIDER_RATE_LIMITED",
+      safeMessage: "Shiprocket order lookup is rate limited.",
+      retryable: true,
+      requestId: input.requestId,
+    });
+  }
+
   if (input.status < 200 || input.status >= 300) {
     throw new ProviderAdapterError({
       providerCode: SHIPROCKET_PROVIDER_CODE,

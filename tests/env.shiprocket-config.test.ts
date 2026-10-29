@@ -38,6 +38,22 @@ describe("Shiprocket environment validation", () => {
     }
   });
 
+  it("requires SHIPROCKET_ENABLED when booking is enabled in production", () => {
+    const parsed = envSchema.safeParse({
+      ...baseSafeProductionEnv,
+      SHIPROCKET_BOOKING_ENABLED: "true",
+      SHIPROCKET_PICKUP_LOCATION: "Doot Warehouse",
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(
+        parsed.error.issues.some((issue) =>
+          issue.path.includes("SHIPROCKET_BOOKING_ENABLED"),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it("accepts booking configuration when pickup location is set", () => {
     const parsed = envSchema.safeParse({
       ...baseProductionEnv,

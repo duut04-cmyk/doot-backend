@@ -19,6 +19,7 @@ import { createAdminOrchestrationListRouter } from "../modules/orchestration/orc
 import { createAdminReportingRouter } from "../modules/admin-reporting/reporting.routes.js";
 import { createTestSmsRouter } from "../modules/test-sms/test-sms.routes.js";
 import { createPaymentWebhookRouter } from "../modules/payment/webhook/payment-webhook.routes.js";
+import { createProviderWebhookRouter } from "../modules/provider/webhook/provider-webhook.routes.js";
 
 export function createApiV1Router(options?: {
   authController?: AuthController;
@@ -42,6 +43,7 @@ export function createApiV1Router(options?: {
   router.use("/auth", createAuthRouter(options?.authController));
   router.use("/deliveries", createDeliveryRouter(options?.deliveryController));
   router.use("/payments/webhooks", createPaymentWebhookRouter());
+  router.use("/providers/webhooks", createProviderWebhookRouter());
 
   router.use(
     "/admin/customers",

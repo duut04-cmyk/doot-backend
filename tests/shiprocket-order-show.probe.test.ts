@@ -35,6 +35,16 @@ describe("Shiprocket orders/show probe", () => {
     }
   });
 
+  it("throws rate limited error for HTTP 429", () => {
+    try {
+      resolveOrderShowProbeResult({ status: 429, data: {}, ...ctx });
+    } catch (error) {
+      expect(error).toMatchObject({
+        category: "PROVIDER_RATE_LIMITED",
+      });
+    }
+  });
+
   it("throws authentication error for HTTP 401", () => {
     try {
       resolveOrderShowProbeResult({ status: 401, data: {}, ...ctx });

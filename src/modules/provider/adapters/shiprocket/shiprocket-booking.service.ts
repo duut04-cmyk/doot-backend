@@ -16,6 +16,7 @@ import {
   requireShiprocketCourierId,
 } from "./shiprocket-metadata.util.js";
 import { resolveOrderShowProbeResult } from "./shiprocket-order-show.probe.js";
+import { confirmedShiprocketAwbCode } from "./shiprocket-order-show.parse.js";
 import {
   bookingRequestChannelOrderId,
   buildShiprocketExternalOrderId,
@@ -26,6 +27,7 @@ import {
   shiprocketAuthService,
 } from "./shiprocket-auth.service.js";
 import {
+  extractShiprocketAssignAwb,
   shiprocketAssignAwbResponseSchema,
   shiprocketCreateAdhocOrderResponseSchema,
 } from "./shiprocket.types.js";
@@ -183,7 +185,57 @@ function parseCreateOrderResponse(body: unknown): ShiprocketCreatedOrderSnapshot
     orderId: String(parsed.data.order_id),
     shipmentId: String(parsed.data.shipment_id),
     status: parsed.data.status ?? "NEW",
-    awbCode: parsed.data.awb_code ?? null,
+    awbCode: confirmedShiprocketAwbCode(
+      typeof parsed.data.awb_code === "string" ? parsed.data.awb_code : null,
+    ),
+  };
+}
+
+function returnBookedWithAwb(input: {
+  created: ShiprocketCreatedOrderSnapshot;
+  awbCode: string;
+  request: BookingRequest;
+  ctx: AdapterExecutionContext;
+  courierId: number;
+  channelOrderId: string;
+}): NormalizedBookingResult {
+  const { created, awbCode, request, courierId, channelOrderId } = input;
+  const confirmedAwb = confirmedShiprocketAwbCode(awbCode);
+  if (!confirmedAwb) {
+    return unknownAfterOrderCreated({
+      created,
+      channelOrderId,
+      courierId,
+      reason: "Shiprocket AWB was present but failed validation.",
+    });
+  }
+  return {
+    success: true,
+    outcome: "BOOKED",
+    providerBookingId: created.orderId,
+    providerReference: created.shipmentId,
+    status: created.status,
+    bookedAt: new Date().toISOString(),
+    estimatedPickupAt: null,
+    estimatedDeliveryAt: null,
+    trackingUrl: null,
+    driver: null,
+    service: request.serviceCode
+      ? {
+          serviceCode: request.serviceCode,
+          serviceName: null,
+          vehicleType: null,
+        }
+      : null,
+    amount: null,
+    reason: null,
+    metadata: {
+      shiprocketOrderId: created.orderId,
+      shiprocketShipmentId: created.shipmentId,
+      shiprocketAwbCode: confirmedAwb,
+      shiprocketCourierId: courierId,
+      shiprocketChannelOrderId: channelOrderId,
+    },
   };
 }
 
@@ -192,6 +244,7 @@ function unknownAfterOrderCreated(input: {
   channelOrderId: string;
   reason: string;
   assignHttpStatus?: number;
+  courierId?: number;
 }): NormalizedBookingResult {
   return {
     success: false,
@@ -207,8 +260,10 @@ function unknownAfterOrderCreated(input: {
     service: null,
     reason: input.reason,
     metadata: {
+      shiprocketOrderId: input.created.orderId,
       shiprocketShipmentId: input.created.shipmentId,
       shiprocketChannelOrderId: input.channelOrderId,
+      ...(input.courierId != null ? { shiprocketCourierId: input.courierId } : {}),
       ...(input.assignHttpStatus != null
         ? { shiprocketAssignAwbHttpStatus: input.assignHttpStatus }
         : {}),
@@ -361,38 +416,22 @@ export class ShiprocketBookingService {
   }): Promise<NormalizedBookingResult> {
     const { request, ctx, token, created, courierId, channelOrderId } = input;
 
-    if (created.awbCode) {
-      return {
-        success: true,
-        outcome: "BOOKED",
-        providerBookingId: created.orderId,
-        providerReference: created.shipmentId,
-        status: created.status,
-        bookedAt: new Date().toISOString(),
-        estimatedPickupAt: null,
-        estimatedDeliveryAt: null,
-        trackingUrl: `${ctx.config.baseUrl}/track/${created.awbCode}`,
-        driver: null,
-        service: request.serviceCode
-          ? {
-              serviceCode: request.serviceCode,
-              serviceName: null,
-              vehicleType: null,
-            }
-          : null,
-        amount: null,
-        reason: null,
-        metadata: {
-          shiprocketShipmentId: created.shipmentId,
-          shiprocketAwbCode: created.awbCode,
-          shiprocketCourierId: courierId,
-          shiprocketChannelOrderId: channelOrderId,
-        },
-      };
+    let orderSnapshot = created;
+
+    const existingAwb = confirmedShiprocketAwbCode(orderSnapshot.awbCode);
+    if (existingAwb) {
+      return returnBookedWithAwb({
+        created: { ...orderSnapshot, awbCode: existingAwb },
+        awbCode: existingAwb,
+        request,
+        ctx,
+        courierId,
+        channelOrderId,
+      });
     }
 
     const awbBody = {
-      shipment_id: Number.parseInt(created.shipmentId, 10),
+      shipment_id: Number.parseInt(orderSnapshot.shipmentId, 10),
       courier_id: courierId,
     };
 
@@ -413,8 +452,9 @@ export class ShiprocketBookingService {
     } catch (error) {
       if (error instanceof ProviderAdapterError) {
         return unknownAfterOrderCreated({
-          created,
+          created: orderSnapshot,
           channelOrderId,
+          courierId,
           reason: "Shiprocket order exists but AWB assignment could not be confirmed.",
         });
       }
@@ -423,8 +463,9 @@ export class ShiprocketBookingService {
 
     if (assignResponse.status === 498) {
       return unknownAfterOrderCreated({
-        created,
+        created: orderSnapshot,
         channelOrderId,
+        courierId,
         reason: "Shiprocket order created but AWB assignment could not be confirmed.",
         assignHttpStatus: assignResponse.status,
       });
@@ -432,8 +473,9 @@ export class ShiprocketBookingService {
 
     if (assignResponse.status < 200 || assignResponse.status >= 300) {
       return unknownAfterOrderCreated({
-        created,
+        created: orderSnapshot,
         channelOrderId,
+        courierId,
         reason: "Shiprocket order created but AWB assignment failed.",
         assignHttpStatus: assignResponse.status,
       });
@@ -441,35 +483,46 @@ export class ShiprocketBookingService {
 
     shiprocketAssignAwbResponseSchema.parse(assignResponse.data);
 
-    return {
-      success: true,
-      outcome: "BOOKED",
-      providerBookingId: created.orderId,
-      providerReference: created.shipmentId,
-      status: created.status,
-      bookedAt: new Date().toISOString(),
-      estimatedPickupAt: null,
-      estimatedDeliveryAt: null,
-      trackingUrl: created.awbCode
-        ? `${ctx.config.baseUrl}/track/${created.awbCode}`
-        : null,
-      driver: null,
-      service: request.serviceCode
-        ? {
-            serviceCode: request.serviceCode,
-            serviceName: null,
-            vehicleType: null,
-          }
-        : null,
-      amount: null,
-      reason: null,
-      metadata: {
-        shiprocketShipmentId: created.shipmentId,
-        shiprocketAwbCode: created.awbCode,
-        shiprocketCourierId: courierId,
-        shiprocketChannelOrderId: channelOrderId,
-      },
-    };
+    let awbCode = confirmedShiprocketAwbCode(
+      extractShiprocketAssignAwb(assignResponse.data),
+    );
+    if (!awbCode) {
+      const afterAssignShow = await this.fetchExistingOrderSnapshot(
+        channelOrderId,
+        token,
+        ctx,
+      );
+      const showAwb = confirmedShiprocketAwbCode(afterAssignShow?.awbCode ?? null);
+      if (showAwb && afterAssignShow) {
+        awbCode = showAwb;
+        orderSnapshot = {
+          ...orderSnapshot,
+          awbCode: showAwb,
+          orderId: afterAssignShow.orderId,
+          shipmentId: afterAssignShow.shipmentId,
+          status: afterAssignShow.status,
+        };
+      }
+    }
+
+    if (!awbCode) {
+      return unknownAfterOrderCreated({
+        created: orderSnapshot,
+        channelOrderId,
+        courierId,
+        reason:
+          "Shiprocket AWB assignment was acknowledged but the AWB is not yet confirmed.",
+      });
+    }
+
+    return returnBookedWithAwb({
+      created: orderSnapshot,
+      awbCode,
+      request,
+      ctx,
+      courierId,
+      channelOrderId,
+    });
   }
 }
 

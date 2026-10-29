@@ -1,0 +1,20 @@
+{
+  "data": {
+    "id": 16161616,
+    "channel_order_id": "DOOT-REF-1",
+    "status": "READY",
+    "status_code": 2,
+    "sub_status": null,
+    "awb_code": null,
+    "shipments": [
+      {
+        "id": 15151515,
+        "awb": "SR999888777IN",
+        "courier": "QuickCourier",
+        "courier_id": 101,
+        "status": "READY",
+        "etd": "2026-04-02"
+      }
+    ]
+  }
+}

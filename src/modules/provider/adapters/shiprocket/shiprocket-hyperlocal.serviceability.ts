@@ -18,6 +18,7 @@ import {
   ShiprocketAuthService,
   shiprocketAuthService,
 } from "./shiprocket-auth.service.js";
+import { SHIPROCKET_JSON_READ_HEADERS } from "./shiprocket.constants.js";
 import { buildHyperlocalServiceabilityPath } from "./shiprocket-hyperlocal.query.js";
 import { parseShiprocketHyperlocalServiceability } from "./shiprocket-hyperlocal.parser.js";
 import type { ParsedHyperlocalRateCandidate } from "./shiprocket.types.js";
@@ -114,7 +115,10 @@ export class ShiprocketHyperlocalServiceabilityService {
           request: {
             method: "GET",
             path,
-            headers: { authorization: `Bearer ${bearerToken}` },
+            headers: {
+              ...SHIPROCKET_JSON_READ_HEADERS,
+              authorization: `Bearer ${bearerToken}`,
+            },
           },
           allowErrorResponseBody: true,
         });

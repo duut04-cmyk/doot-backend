@@ -1,5 +1,6 @@
 import { ErrorCodes, type ErrorCode } from "../../core/errors/error-codes.js";
 import { AppError } from "../../core/errors/app-error.js";
+import { isValidShiprocketAwbCode } from "../provider/adapters/shiprocket/shiprocket-order-show.parse.js";
 import type {
   BookingOutcome,
   NormalizedBookingResult,
@@ -46,11 +47,7 @@ export function providerBookingMetadataReconciled(
     return false;
   }
   const awb = metadata.shiprocketAwbCode;
-  if (typeof awb === "string" && awb.length > 0) {
-    return true;
-  }
-  const shipmentId = metadata.shiprocketShipmentId;
-  return typeof shipmentId === "string" && shipmentId.length > 0;
+  return isValidShiprocketAwbCode(typeof awb === "string" ? awb : null);
 }
 
 export function classifyProviderAdapterError(

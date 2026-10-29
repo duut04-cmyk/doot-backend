@@ -78,6 +78,35 @@ describe("ShiprocketAuthService", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("extracts top-level token from documented sandbox login shape", async () => {
+    const loginFixture = JSON.parse(
+      readFileSync(
+        join(fixtureDir, "auth-login-sandbox-documented-shape.json"),
+        "utf8",
+      ),
+    );
+
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(loginFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const { ProviderHttpClient } =
+      await import("../src/modules/provider/adapters/provider-http-client.js");
+    const http = new ProviderHttpClient(fetchMock as typeof fetch);
+    const auth = new ShiprocketAuthService(http);
+    auth.clearCacheForTests();
+
+    const token = await auth.getBearerToken({
+      config: runtimeConfig,
+      requestId: "req-auth-documented-shape",
+    });
+    expect(token).toBe("fixture-sandbox-jwt-placeholder-not-a-real-token");
+  });
+
   it("maps 401 to PROVIDER_AUTHENTICATION_ERROR", async () => {
     const fetchMock = vi.fn(async () => new Response("Unauthorized", { status: 401 }));
     const { ProviderHttpClient } =

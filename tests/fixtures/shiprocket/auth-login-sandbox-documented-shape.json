@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-10-14T04:33:55.000000Z",
+  "company_name": "Doot",
+  "plan_id": 6,
+  "is_onboarding_complete": false,
+  "is_fixed_plan": true,
+  "is_free_plan": false,
+  "is_basic_plan": false,
+  "inventory_sync_status": false,
+  "token": "fixture-sandbox-jwt-placeholder-not-a-real-token"
+}

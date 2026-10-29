@@ -43,6 +43,8 @@ import {
 } from "../payment/payment.repository.js";
 import { paymentService, type PaymentService } from "../payment/payment.service.js";
 import { refundPrepaidAfterCancellation } from "./cancellation-refund.js";
+import { SHIPROCKET_PROVIDER_CODE } from "../provider/adapters/shiprocket/shiprocket.constants.js";
+import { resolveShiprocketNumericOrderIdForCancel } from "../provider/adapters/shiprocket/shiprocket-cancel.util.js";
 
 export class CancellationService {
   constructor(
@@ -189,19 +191,40 @@ export class CancellationService {
         });
       }
 
-      try {
-        const result = await this.adapterExecutor.execute({
-          providerCode: latestBooking!.providerCode,
-          operation: "cancelBooking",
-          payload: {
-            providerBookingId: latestBooking!.providerOrderId!,
-            reason: input.reasonMessage ?? input.reasonCode,
-          },
-          requestId: input.requestId,
-        });
-        resolved = resolveCancellationResult(result);
-      } catch (error) {
-        resolved = classifyCancellationError(error);
+      const providerBookingIdForCancel =
+        latestBooking!.providerCode === SHIPROCKET_PROVIDER_CODE
+          ? resolveShiprocketNumericOrderIdForCancel({
+              providerOrderId: latestBooking!.providerOrderId,
+              quoteSnapshot: latestBooking!.quoteSnapshot,
+            })
+          : latestBooking!.providerOrderId;
+
+      if (!providerBookingIdForCancel) {
+        resolved = {
+          outcome: "REJECTED" as const,
+          providerCancellationReference: null,
+          cancelledAt: null,
+          failureCode: ErrorCodes.PROVIDER_CANCELLATION_REJECTED,
+          failureMessage:
+            latestBooking!.providerCode === SHIPROCKET_PROVIDER_CODE
+              ? "Shiprocket order id is missing or invalid for cancellation."
+              : "Provider booking id is missing for cancellation.",
+        };
+      } else {
+        try {
+          const result = await this.adapterExecutor.execute({
+            providerCode: latestBooking!.providerCode,
+            operation: "cancelBooking",
+            payload: {
+              providerBookingId: providerBookingIdForCancel,
+              reason: input.reasonMessage ?? input.reasonCode,
+            },
+            requestId: input.requestId,
+          });
+          resolved = resolveCancellationResult(result);
+        } catch (error) {
+          resolved = classifyCancellationError(error);
+        }
       }
     }
 

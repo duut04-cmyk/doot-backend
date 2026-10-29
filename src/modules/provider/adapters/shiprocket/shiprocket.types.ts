@@ -64,8 +64,26 @@ export const shiprocketAssignAwbResponseSchema = z
   .object({
     success: z.union([z.boolean(), z.string()]).optional(),
     message: z.string().optional(),
+    awb_code: z.union([z.string(), z.null()]).optional(),
+    awb: z.union([z.string(), z.null()]).optional(),
   })
   .passthrough();
+
+/** Best-effort AWB extraction from assign/awb JSON (top-level fields only). */
+export function extractShiprocketAssignAwb(body: unknown): string | null {
+  const parsed = shiprocketAssignAwbResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return null;
+  }
+  const row = parsed.data;
+  const candidates = [row.awb_code, row.awb];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
 
 export const shiprocketOrderShowResponseSchema = z
   .object({
@@ -75,7 +93,12 @@ export const shiprocketOrderShowResponseSchema = z
         status: z.string().optional(),
         status_code: z.union([z.number(), z.string()]).optional(),
         awb_code: z.union([z.string(), z.null()]).optional(),
-        shipments: z.array(z.record(z.string(), z.unknown())).optional(),
+        shipments: z
+          .union([
+            z.array(z.record(z.string(), z.unknown())),
+            z.record(z.string(), z.unknown()),
+          ])
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -87,5 +110,9 @@ export const shiprocketTrackingResponseSchema = z
     tracking_data: z.record(z.string(), z.unknown()).optional(),
     shipment_status: z.union([z.string(), z.number()]).optional(),
     shipment_track: z.array(z.record(z.string(), z.unknown())).optional(),
+    shipment_track_activities: z.array(z.record(z.string(), z.unknown())).optional(),
+    track_status: z.union([z.number(), z.string()]).optional(),
+    track_url: z.string().optional(),
+    error: z.string().optional(),
   })
   .passthrough();

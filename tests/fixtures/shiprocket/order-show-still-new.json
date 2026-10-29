@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": 16161616,
+    "status": "NEW",
+    "status_code": 1,
+    "awb_code": "SR123456789IN",
+    "shipments": [
+      {
+        "id": 15151515
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": 17171717,
+    "channel_order_id": "DOOT-REF-OBJ",
+    "status": "READY",
+    "shipments": {
+      "id": 18181818,
+      "awb_code": "SR777888999IN",
+      "courier_name": "ObjCourier",
+      "courier_id": 55
+    }
+  }
+}

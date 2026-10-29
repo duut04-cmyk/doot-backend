@@ -427,6 +427,46 @@ describe("CancellationService", () => {
     ).rejects.toMatchObject({
       code: ErrorCodes.CANCELLATION_UNKNOWN,
     });
+
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("BOOKED");
+  });
+
+  it("does not refund when provider returns UNKNOWN outcome", async () => {
+    executeMock.mockResolvedValue({
+      success: false,
+      outcome: "UNKNOWN",
+      providerCancellationId: null,
+      status: "UNKNOWN",
+      reason: "Could not confirm cancellation.",
+      cancelledAt: null,
+    });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await expect(
+      service.cancel({
+        deliveryId: seeded.deliveryId,
+        userId: customerId,
+        role: "CUSTOMER",
+        requestId: "req-cancel-unknown-outcome",
+        reasonCode: "CUSTOMER_CHANGED_MIND",
+        requestHash: "hash-unknown-outcome",
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCodes.CANCELLATION_UNKNOWN,
+    });
+
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("BOOKED");
+    expect(cancellationRepo.cancellations[0]?.status).toBe("UNKNOWN");
+    expect(paymentRepo.refunds.size).toBe(0);
   });
 
   it("blocks retry when cancellation is already in progress", async () => {

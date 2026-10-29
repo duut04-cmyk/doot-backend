@@ -142,6 +142,14 @@ describe("Shiprocket hyperlocal serviceability", () => {
         expect(url).toContain("is_new_hyperlocal=1");
         expect(url).toContain("cod=0");
         expect(url).toContain("weight=1.2");
+        const headers = init?.headers as Record<string, string> | undefined;
+        const accept =
+          headers?.Accept ??
+          headers?.accept ??
+          (headers && "get" in headers
+            ? (headers as Headers).get("accept")
+            : undefined);
+        expect(accept).toBe("application/json");
         return new Response(JSON.stringify(serviceabilityFixture), { status: 200 });
       }
       return new Response("not found", { status: 404 });

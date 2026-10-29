@@ -9,6 +9,11 @@ export const SHIPROCKET_AUTH_PATH = "/v1/external/auth/login";
 export const SHIPROCKET_HYPERLOCAL_SERVICEABILITY_PATH =
   "/v1/external/courier/serviceability";
 
+/** Headers for Shiprocket JSON read APIs (serviceability GET). */
+export const SHIPROCKET_JSON_READ_HEADERS = {
+  accept: "application/json",
+} as const;
+
 export const SHIPROCKET_CREATE_ADHOC_ORDER_PATH = "/v1/external/orders/create/adhoc";
 
 export const SHIPROCKET_ASSIGN_AWB_PATH = "/v1/external/courier/assign/awb";

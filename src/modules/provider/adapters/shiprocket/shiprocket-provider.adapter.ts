@@ -156,11 +156,13 @@ export class ShiprocketProviderAdapter implements ProviderHyperlocalRatesAdapter
           input as CancellationRequest,
           ctx,
         )) as AdapterOperationOutput<T>;
-      case "getTracking":
-        return (await this.lifecycle.getTracking(
-          (input as TrackingRequest).providerBookingId,
-          ctx,
-        )) as AdapterOperationOutput<T>;
+      case "getTracking": {
+        const trackingInput = input as TrackingRequest;
+        return (await this.lifecycle.getTracking(trackingInput.providerBookingId, ctx, {
+          awbCode: trackingInput.providerAwbCode ?? null,
+          shipmentId: trackingInput.providerShipmentId ?? null,
+        })) as AdapterOperationOutput<T>;
+      }
       default:
         unsupported(operation);
     }

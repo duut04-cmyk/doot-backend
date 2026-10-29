@@ -4,6 +4,9 @@ import { normalizedDriverSchema } from "./common.js";
 export const trackingRequestSchema = z.object({
   providerBookingId: z.string().min(1),
   deliveryReference: z.string().optional(),
+  /** Shiprocket shipment id when already persisted (avoids order-show for tracking). */
+  providerShipmentId: z.string().optional(),
+  providerAwbCode: z.string().optional(),
 });
 
 export const normalizedTrackingResultSchema = z.object({
@@ -17,6 +20,7 @@ export const normalizedTrackingResultSchema = z.object({
   trackingUrl: z.string().nullable(),
   driver: normalizedDriverSchema.nullable(),
   providerEventId: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type TrackingRequest = z.infer<typeof trackingRequestSchema>;
