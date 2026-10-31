@@ -33,6 +33,8 @@ export type ListPaymentsFilters = {
   paidFrom?: Date;
   paidToExclusive?: Date;
   search?: string;
+  /** Resolved payment IDs when search is a UUID / PAY- hex prefix. */
+  searchPaymentIds?: string[];
 };
 
 export type ListRefundsFilters = {
@@ -52,7 +54,8 @@ export class AdminFinanceRepository {
     limit: number,
     filters: ListPaymentsFilters,
   ): Promise<{ items: AdminPaymentListItemDto[]; total: number }> {
-    const where = this.buildPaymentListWhere(filters);
+    const resolved = await this.resolvePaymentSearchFilters(filters);
+    const where = this.buildPaymentListWhere(resolved);
     const skip = (page - 1) * limit;
     const [rows, total] = await Promise.all([
       getPrismaClient().payment.findMany({
@@ -71,7 +74,12 @@ export class AdminFinanceRepository {
           gatewayOrderId: true,
           paidAt: true,
           createdAt: true,
-          delivery: { select: { reference: true } },
+          delivery: {
+            select: {
+              reference: true,
+              customer: { select: { name: true } },
+            },
+          },
         },
       }),
       getPrismaClient().payment.count({ where }),
@@ -83,6 +91,7 @@ export class AdminFinanceRepository {
         id: row.id,
         deliveryId: row.deliveryId,
         deliveryReference: row.delivery.reference,
+        customerName: row.delivery.customer.name.trim() || null,
         status: row.status,
         amount: decimalToMoneyString(row.amount),
         currency: row.currency,
@@ -387,6 +396,37 @@ export class AdminFinanceRepository {
     };
   }
 
+  private async resolvePaymentSearchFilters(
+    filters: ListPaymentsFilters,
+  ): Promise<ListPaymentsFilters> {
+    const term = filters.search?.trim();
+    if (!term) {
+      return filters;
+    }
+    const fullUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        term,
+      );
+    if (fullUuid) {
+      return filters;
+    }
+    if (/^[0-9a-f]{6,32}$/i.test(term)) {
+      const prefix = term.toLowerCase();
+      const rows = await getPrismaClient().$queryRaw<Array<{ id: string }>>`
+        SELECT id::text AS id
+        FROM "Payment"
+        WHERE LOWER(id::text) LIKE ${`${prefix}%`}
+        LIMIT 50
+      `;
+      const { search: _search, ...rest } = filters;
+      return {
+        ...rest,
+        searchPaymentIds: rows.map((row) => row.id),
+      };
+    }
+    return filters;
+  }
+
   private buildPaymentListWhere(
     filters: ListPaymentsFilters,
   ): Prisma.PaymentWhereInput {
@@ -409,17 +449,20 @@ export class AdminFinanceRepository {
         where.paidAt.lt = filters.paidToExclusive;
       }
     }
-    if (filters.search) {
+    if (filters.searchPaymentIds) {
+      where.id = { in: filters.searchPaymentIds };
+    } else if (filters.search) {
+      const term = filters.search.trim();
       const or: Prisma.PaymentWhereInput[] = [
-        { gatewayOrderId: { contains: filters.search, mode: "insensitive" } },
-        { delivery: { reference: { contains: filters.search, mode: "insensitive" } } },
+        { gatewayOrderId: { contains: term, mode: "insensitive" } },
+        { delivery: { reference: { contains: term, mode: "insensitive" } } },
       ];
       if (
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-          filters.search,
+          term,
         )
       ) {
-        or.push({ id: filters.search });
+        or.push({ id: term });
       }
       where.OR = or;
     }

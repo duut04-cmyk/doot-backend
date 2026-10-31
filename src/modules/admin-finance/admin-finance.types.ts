@@ -35,6 +35,7 @@ export type AdminPaymentListItemDto = {
   id: string;
   deliveryId: string;
   deliveryReference: string;
+  customerName: string | null;
   status: PaymentStatus;
   amount: string;
   currency: PaymentCurrency;
