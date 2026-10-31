@@ -9,6 +9,7 @@ import {
   deliveryLifecycleService,
   type DeliveryLifecycleService,
 } from "../delivery/delivery-lifecycle.service.js";
+import { canTransitionDelivery } from "../delivery/delivery.transitions.js";
 import type { NormalizedTrackingResult } from "../provider/contracts/tracking.js";
 import type { NormalizedProviderWebhookEvent } from "../provider/contracts/webhook.js";
 import {
@@ -152,17 +153,23 @@ export class TrackingService {
     event: NormalizedProviderWebhookEvent;
   }) {
     if (input.event.tracking) {
+      const webhookReceivedAt = input.event.receivedAt;
       const tracking: NormalizedTrackingResult = {
         status: input.event.tracking.status ?? input.event.status ?? "UNKNOWN",
         latitude: input.event.tracking.latitude ?? null,
         longitude: input.event.tracking.longitude ?? null,
         accuracyMeters: null,
         providerTimestamp: input.event.eventTimestamp,
-        receivedAt: input.event.receivedAt,
+        receivedAt: webhookReceivedAt,
         eta: input.event.tracking.eta ?? null,
         trackingUrl: input.event.tracking.trackingUrl ?? null,
         driver: input.event.driver,
         providerEventId: input.event.providerEventId,
+        metadata: {
+          ...(input.event.metadata ?? {}),
+          ...(input.event.tracking.metadata ?? {}),
+          webhookReceivedAt,
+        },
       };
       return this.ingestTrackingResult({
         deliveryId: input.deliveryId,
@@ -175,17 +182,22 @@ export class TrackingService {
     }
 
     if (input.event.status) {
+      const webhookReceivedAt = input.event.receivedAt;
       const tracking: NormalizedTrackingResult = {
         status: input.event.status,
         latitude: null,
         longitude: null,
         accuracyMeters: null,
         providerTimestamp: input.event.eventTimestamp,
-        receivedAt: input.event.receivedAt,
+        receivedAt: webhookReceivedAt,
         eta: null,
         trackingUrl: null,
         driver: input.event.driver,
         providerEventId: input.event.providerEventId,
+        metadata: {
+          ...(input.event.metadata ?? {}),
+          webhookReceivedAt,
+        },
       };
       return this.ingestTrackingResult({
         deliveryId: input.deliveryId,
@@ -208,6 +220,14 @@ export class TrackingService {
     tracking: NormalizedTrackingResult;
     source: "PROVIDER_POLL" | "PROVIDER_WEBHOOK";
   }) {
+    if (input.tracking.metadata?.trackingAvailability === "PENDING") {
+      logger.info(
+        { deliveryId: input.deliveryId, source: input.source },
+        "tracking.pending_skipped",
+      );
+      return null;
+    }
+
     if (
       input.tracking.providerEventId &&
       (await this.trackingRepo.findByProviderEvent(
@@ -248,13 +268,20 @@ export class TrackingService {
       normalizedStatus,
       trackingUrl: input.tracking.trackingUrl,
       source: input.source,
+      metadata: input.tracking.metadata ?? null,
     });
 
-    await this.maybeTransitionFromTracking({
-      deliveryId: input.deliveryId,
-      currentStatus: input.deliveryStatus,
-      normalizedStatus,
-    });
+    const skipForwardLifecycle =
+      input.tracking.metadata?.skipForwardDeliveryLifecycle === true;
+
+    if (!skipForwardLifecycle) {
+      await this.maybeTransitionFromTracking({
+        deliveryId: input.deliveryId,
+        currentStatus: input.deliveryStatus,
+        normalizedStatus,
+        source: input.source,
+      });
+    }
 
     logger.info({ deliveryId: input.deliveryId, normalizedStatus }, "tracking.updated");
 
@@ -265,6 +292,7 @@ export class TrackingService {
     deliveryId: string;
     currentStatus: DeliveryStatus;
     normalizedStatus: string;
+    source: "PROVIDER_POLL" | "PROVIDER_WEBHOOK";
   }) {
     const target = TRACKING_STATUS_TO_DELIVERY[input.normalizedStatus];
     if (!target) {
@@ -291,6 +319,15 @@ export class TrackingService {
     const fromMap: Partial<Record<DeliveryStatus, DeliveryStatus[]>> = {
       IN_TRANSIT: ["PICKED_UP"],
     };
+
+    // Webhooks may carry out-of-order statuses; skip invalid lifecycle targets quietly.
+    // Poll/manual refresh keeps prior behavior: invalid transitions throw from lifecycle.
+    if (
+      input.source === "PROVIDER_WEBHOOK" &&
+      !canTransitionDelivery(input.currentStatus, target)
+    ) {
+      return;
+    }
 
     await this.lifecycle.transition({
       deliveryId: input.deliveryId,

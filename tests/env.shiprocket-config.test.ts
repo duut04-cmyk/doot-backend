@@ -38,11 +38,87 @@ describe("Shiprocket environment validation", () => {
     }
   });
 
+  it("requires SHIPROCKET_ENABLED when booking is enabled in production", () => {
+    const parsed = envSchema.safeParse({
+      ...baseSafeProductionEnv,
+      SHIPROCKET_BOOKING_ENABLED: "true",
+      SHIPROCKET_PICKUP_LOCATION: "Doot Warehouse",
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(
+        parsed.error.issues.some((issue) =>
+          issue.path.includes("SHIPROCKET_BOOKING_ENABLED"),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it("accepts booking configuration when pickup location is set", () => {
     const parsed = envSchema.safeParse({
       ...baseProductionEnv,
       SHIPROCKET_BOOKING_ENABLED: "true",
       SHIPROCKET_PICKUP_LOCATION: "Doot Warehouse",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects conflicting SHIPROCKET_WEBHOOK_TOKEN and SHIPROCKET_WEBHOOK_API_KEY", () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: "development",
+      JWT_ACCESS_SECRET: "x".repeat(32),
+      SHIPROCKET_WEBHOOK_TOKEN: "token-a",
+      SHIPROCKET_WEBHOOK_API_KEY: "token-b",
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(
+        parsed.error.issues.some((issue) =>
+          issue.path.includes("SHIPROCKET_WEBHOOK_TOKEN"),
+        ),
+      ).toBe(true);
+      expect(
+        parsed.error.issues.every(
+          (issue) =>
+            !issue.message.includes("token-a") && !issue.message.includes("token-b"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts matching SHIPROCKET_WEBHOOK_TOKEN and SHIPROCKET_WEBHOOK_API_KEY", () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: "development",
+      JWT_ACCESS_SECRET: "x".repeat(32),
+      SHIPROCKET_WEBHOOK_TOKEN: "same-secret",
+      SHIPROCKET_WEBHOOK_API_KEY: "same-secret",
+      SHIPROCKET_WEBHOOK_ENABLED: "true",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("requires webhook secret when enabled in non-test environments", () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: "development",
+      JWT_ACCESS_SECRET: "x".repeat(32),
+      SHIPROCKET_WEBHOOK_ENABLED: "true",
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(
+        parsed.error.issues.some((issue) =>
+          issue.path.includes("SHIPROCKET_WEBHOOK_TOKEN"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("accepts SHIPROCKET_WEBHOOK_TOKEN alone when webhooks enabled", () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: "development",
+      JWT_ACCESS_SECRET: "x".repeat(32),
+      SHIPROCKET_WEBHOOK_ENABLED: "true",
+      SHIPROCKET_WEBHOOK_TOKEN: "webhook-secret",
     });
     expect(parsed.success).toBe(true);
   });

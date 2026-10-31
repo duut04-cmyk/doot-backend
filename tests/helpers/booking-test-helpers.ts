@@ -18,10 +18,16 @@ export async function seedOptionReadyDelivery(input: {
   providerCode?: string;
   quoteAmount?: number;
   quoteSnapshot?: Record<string, unknown>;
+  pickupLatitude?: number;
+  pickupLongitude?: number;
+  dropLatitude?: number;
+  dropLongitude?: number;
+  providerEnvironment?: "SANDBOX" | "LIVE";
 }) {
   const providerId = await seedOrchestrationMockProvider(input.providerRepo, {
     code: input.providerCode ?? "MOCK",
     priority: 1,
+    environment: input.providerEnvironment,
   });
   const provider = await input.providerRepo.findById(providerId);
   const service = provider?.services[0];
@@ -35,16 +41,16 @@ export async function seedOptionReadyDelivery(input: {
       contactName: "A",
       ...storedPhone("+91", "9888877776"),
       instructions: null,
-      latitude: null,
-      longitude: null,
+      latitude: input.pickupLatitude ?? null,
+      longitude: input.pickupLongitude ?? null,
     },
     drop: {
       addressText: "Drop",
       contactName: "B",
       ...storedPhone("+91", "9811122233"),
       instructions: null,
-      latitude: null,
-      longitude: null,
+      latitude: input.dropLatitude ?? null,
+      longitude: input.dropLongitude ?? null,
     },
     package: {
       packageType: "FOOD",

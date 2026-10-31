@@ -17,6 +17,9 @@ export type CancellationRefundSummary = {
 /**
  * After a successful pre-pickup cancellation, refund 100% of remaining prepaid amount.
  * No invented fees. Skips unpaid / already-fully-refunded payments.
+ *
+ * Shiprocket wallet / Passbook freight adjustments from provider cancellation are
+ * separate from this customer refund and are not inferred from provider HTTP responses.
  */
 export async function refundPrepaidAfterCancellation(input: {
   deliveryId: string;

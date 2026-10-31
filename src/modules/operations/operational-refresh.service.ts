@@ -17,6 +17,10 @@ import {
 } from "../provider/adapters/provider-adapter-executor.js";
 import type { AdapterExecutionContext } from "../provider/adapters/provider-adapter.types.js";
 import type { TrackingService } from "../tracking/tracking.service.js";
+import {
+  confirmedShiprocketAwbCode,
+  isValidShiprocketShipmentId,
+} from "../provider/adapters/shiprocket/shiprocket-order-show.parse.js";
 import { requireBookedProviderBooking } from "./operational-context.js";
 import type {
   OperationalRefreshFailureMode,
@@ -78,6 +82,21 @@ export class OperationalRefreshService {
       this.bookingRepo,
     );
 
+    const providerMetadata = booking.quoteSnapshot?.providerMetadata ?? null;
+    const metadataShipment =
+      typeof providerMetadata?.shiprocketShipmentId === "string"
+        ? providerMetadata.shiprocketShipmentId
+        : null;
+    const referenceShipment = booking.providerReference ?? null;
+    const persistedShipmentId =
+      (isValidShiprocketShipmentId(metadataShipment) ? metadataShipment : undefined) ??
+      (isValidShiprocketShipmentId(referenceShipment) ? referenceShipment : undefined);
+    const metadataAwb =
+      typeof providerMetadata?.shiprocketAwbCode === "string"
+        ? providerMetadata.shiprocketAwbCode
+        : null;
+    const persistedAwb = confirmedShiprocketAwbCode(metadataAwb) ?? undefined;
+
     let trackingResult;
     try {
       trackingResult = await this.adapterExecutor.execute({
@@ -86,6 +105,8 @@ export class OperationalRefreshService {
         payload: {
           providerBookingId: booking.providerOrderId!,
           deliveryReference: delivery.reference,
+          providerShipmentId: persistedShipmentId,
+          providerAwbCode: persistedAwb,
         },
         requestId: input.requestId,
         testHints: input.testHints,

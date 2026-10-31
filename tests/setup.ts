@@ -1,4 +1,10 @@
 process.env.NODE_ENV = "test";
+
+// Unit tests use in-memory repos; do not hit .env DATABASE_URL unless TEST_DATABASE_URL is set.
+if (!process.env.TEST_DATABASE_URL?.trim()) {
+  process.env.DATABASE_URL = "";
+  process.env.DIRECT_URL = "";
+}
 process.env.MSG91_ENABLED = "false";
 process.env.SMS_PROVIDER = "mock";
 // Prevent local .env trial override from affecting unit tests

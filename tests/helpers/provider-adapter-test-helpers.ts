@@ -72,6 +72,7 @@ export async function seedOrchestrationMockProvider(
     healthStatus?: "UNKNOWN" | "HEALTHY" | "UNHEALTHY";
     capabilities?: ProviderCapability[];
     enabled?: boolean;
+    environment?: "SANDBOX" | "LIVE";
   },
 ): Promise<string> {
   const code = options?.code ?? MOCK_PROVIDER_CODE;
@@ -80,7 +81,7 @@ export async function seedOrchestrationMockProvider(
     name: `Orchestration Provider ${code}`,
     displayName: code,
     description: "Orchestration test provider",
-    environment: "SANDBOX",
+    environment: options?.environment ?? "SANDBOX",
     enabled: options?.enabled ?? true,
     orchestrationEnabled: options?.orchestrationEnabled ?? true,
     priority: options?.priority ?? 10,

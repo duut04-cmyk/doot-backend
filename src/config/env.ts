@@ -6,6 +6,14 @@ loadDotenv({ override: false });
 const emptyToUndefined = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
 
+/** Resolves configured webhook secret; TOKEN is preferred over API_KEY. */
+export function resolveShiprocketWebhookSecretFromEnv(input: {
+  SHIPROCKET_WEBHOOK_TOKEN?: string;
+  SHIPROCKET_WEBHOOK_API_KEY?: string;
+}): string | undefined {
+  return input.SHIPROCKET_WEBHOOK_TOKEN ?? input.SHIPROCKET_WEBHOOK_API_KEY;
+}
+
 /**
  * Central environment configuration.
  *
@@ -220,6 +228,23 @@ const envSchema = z
 
     /** Pickup location name configured in the Shiprocket account (required for adhoc orders). */
     SHIPROCKET_PICKUP_LOCATION: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    SHIPROCKET_WEBHOOK_ENABLED: z
+      .preprocess((value) => value === "true" || value === true, z.boolean())
+      .optional()
+      .default(false),
+
+    /** Preferred inbound webhook shared secret (Shiprocket dashboard: header x-api-key). */
+    SHIPROCKET_WEBHOOK_TOKEN: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    /** Legacy alias for SHIPROCKET_WEBHOOK_TOKEN (must match TOKEN when both are set). */
+    SHIPROCKET_WEBHOOK_API_KEY: z.preprocess(
       emptyToUndefined,
       z.string().min(1).optional(),
     ),
@@ -448,12 +473,50 @@ const envSchema = z
     }
 
     if (data.SHIPROCKET_BOOKING_ENABLED && data.NODE_ENV !== "test") {
+      if (!data.SHIPROCKET_ENABLED) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_BOOKING_ENABLED"],
+          message:
+            "SHIPROCKET_ENABLED must be true when SHIPROCKET_BOOKING_ENABLED is true",
+        });
+      }
       if (!data.SHIPROCKET_PICKUP_LOCATION) {
         ctx.addIssue({
           code: "custom",
           path: ["SHIPROCKET_PICKUP_LOCATION"],
           message:
             "SHIPROCKET_PICKUP_LOCATION is required when SHIPROCKET_BOOKING_ENABLED is true",
+        });
+      }
+    }
+
+    if (
+      data.SHIPROCKET_WEBHOOK_TOKEN &&
+      data.SHIPROCKET_WEBHOOK_API_KEY &&
+      data.SHIPROCKET_WEBHOOK_TOKEN !== data.SHIPROCKET_WEBHOOK_API_KEY
+    ) {
+      const conflictMessage =
+        "SHIPROCKET_WEBHOOK_TOKEN and SHIPROCKET_WEBHOOK_API_KEY must match when both are set";
+      ctx.addIssue({
+        code: "custom",
+        path: ["SHIPROCKET_WEBHOOK_TOKEN"],
+        message: conflictMessage,
+      });
+      ctx.addIssue({
+        code: "custom",
+        path: ["SHIPROCKET_WEBHOOK_API_KEY"],
+        message: conflictMessage,
+      });
+    }
+
+    if (data.SHIPROCKET_WEBHOOK_ENABLED && data.NODE_ENV !== "test") {
+      if (!resolveShiprocketWebhookSecretFromEnv(data)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SHIPROCKET_WEBHOOK_TOKEN"],
+          message:
+            "SHIPROCKET_WEBHOOK_TOKEN or SHIPROCKET_WEBHOOK_API_KEY is required when SHIPROCKET_WEBHOOK_ENABLED is true",
         });
       }
     }
@@ -637,6 +700,17 @@ export function isCashfreeConfigured(): boolean {
     env.CASHFREE_CLIENT_SECRET &&
     env.CASHFREE_ENVIRONMENT === "sandbox",
   );
+}
+
+export function requireShiprocketWebhookApiKey(): string {
+  if (!env.SHIPROCKET_WEBHOOK_ENABLED) {
+    throw new Error("SHIPROCKET_WEBHOOK_ENABLED is false");
+  }
+  const secret = resolveShiprocketWebhookSecretFromEnv(env);
+  if (!secret) {
+    throw new Error("Shiprocket webhook secret is not configured");
+  }
+  return secret;
 }
 
 export function requireCashfreeCredentials(): {

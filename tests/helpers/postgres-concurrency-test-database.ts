@@ -81,3 +81,17 @@ export function assertPostgresConcurrencyTestDatabaseUrl(
 
   return raw;
 }
+
+/** Returns a validated URL or undefined when the env target is missing or not disposable-local. */
+export function tryPostgresConcurrencyTestDatabaseUrl(
+  raw: string | undefined,
+): string | undefined {
+  if (raw === undefined || raw.trim() === "") {
+    return undefined;
+  }
+  try {
+    return assertPostgresConcurrencyTestDatabaseUrl(raw);
+  } catch {
+    return undefined;
+  }
+}

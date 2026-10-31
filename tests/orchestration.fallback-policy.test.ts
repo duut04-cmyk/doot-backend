@@ -18,12 +18,14 @@ import * as orchestrationEligibility from "../src/modules/orchestration/orchestr
 import { OrchestrationProviderEvaluationService } from "../src/modules/orchestration/orchestration.provider-evaluation.js";
 import { OrchestrationService } from "../src/modules/orchestration/orchestration.service.js";
 import type { ProviderEvaluationOutcome } from "../src/modules/orchestration/orchestration.types.js";
+import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repository.js";
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { knownFixedFeeCancellationPolicy } from "./helpers/cancellation-policy-test-helpers.js";
 import { seedOrchestrationMockProvider } from "./helpers/provider-adapter-test-helpers.js";
 import { phoneValue } from "./helpers/phone-test-helpers.js";
+import { createTestRuntimeSettingsService } from "./helpers/test-runtime-settings.js";
 
 function eligibleOutcome(input: {
   providerId: string;
@@ -176,6 +178,9 @@ describe("OrchestrationService fallback policy", () => {
       providerRepo,
       orchestrationRepo,
       evaluationService,
+      15_000,
+      new InMemoryBookingRepository(),
+      createTestRuntimeSettingsService(),
     );
   }
 
