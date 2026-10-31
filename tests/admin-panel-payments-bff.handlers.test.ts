@@ -49,7 +49,7 @@ describe("admin-panel payments BFF handlers", () => {
     const path = String(fetch.mock.calls[0]![0]);
     expect(path).toContain("/api/v1/admin/payments");
     expect(path).toContain("page=1");
-    expect(path).toContain("limit=25");
+    expect(path).toContain("limit=10");
   });
 
   it("forwards paidFrom and paidTo on payments list", async () => {

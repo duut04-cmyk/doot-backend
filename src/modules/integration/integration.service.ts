@@ -66,16 +66,16 @@ export class IntegrationService {
       {
         id: "identity",
         title: "Identity & access",
-        description: "Authentication services used by customer-facing apps.",
+        description: "Auth",
         items: [
           item({
             id: "google-sign-in",
             name: "Google Sign-In",
-            description: "Customer OAuth login via Google ID tokens.",
+            description: "Customer OAuth via Google.",
             category: "identity",
             status: googleConfigured ? "connected" : "not_configured",
-            usedBy: "Customer app login",
-            impact: "Without Google, customers can only use email and password.",
+            usedBy: "Customer login",
+            impact: "Email/password login only.",
             metadata: googleConfigured
               ? { clientIdHint: `${env.GOOGLE_CLIENT_ID!.slice(0, 12)}…` }
               : {},
@@ -86,16 +86,16 @@ export class IntegrationService {
       {
         id: "communications",
         title: "Communications",
-        description: "Outbound messaging for auth and delivery operations.",
+        description: "Email & SMS",
         items: [
           item({
             id: "resend-email",
             name: "Resend Email",
-            description: "Transactional email for OTP and notifications.",
+            description: "Transactional email for OTP and alerts.",
             category: "communications",
             status: resendConfigured ? "connected" : "not_configured",
-            usedBy: "Email verification and password reset",
-            impact: "Verification and password reset emails will fail without Resend.",
+            usedBy: "Verification & password reset",
+            impact: "Auth emails stop.",
             metadata: fromEmail ? { fromEmail } : {},
             manageHref: null,
           }),
@@ -107,12 +107,11 @@ export class IntegrationService {
                 : env.SMS_PROVIDER === "msg91"
                   ? "MSG91 SMS"
                   : "Operational SMS (mock)",
-            description: "Pickup and delivery OTP notifications via SMS.",
+            description: "Pickup and delivery OTP SMS.",
             category: "communications",
             status: isOperationalSmsEnabled() ? "connected" : "not_configured",
-            usedBy: "Pickup OTP and delivery OTP SMS notifications",
-            impact:
-              "Pickup and delivery OTP cannot be generated when the selected SMS provider is disabled or misconfigured.",
+            usedBy: "Pickup & delivery OTP",
+            impact: "OTP SMS unavailable.",
             metadata:
               env.SMS_PROVIDER === "twilio"
                 ? {
@@ -129,12 +128,12 @@ export class IntegrationService {
       {
         id: "infrastructure",
         title: "Infrastructure",
-        description: "Core platform dependencies.",
+        description: "Data & storage",
         items: [
           item({
             id: "postgresql",
             name: "PostgreSQL (Supabase)",
-            description: "Primary database for users, deliveries, and orchestration.",
+            description: "Primary database.",
             category: "infrastructure",
             status: !databaseConfigured
               ? "not_configured"
@@ -142,20 +141,18 @@ export class IntegrationService {
                 ? "connected"
                 : "degraded",
             usedBy: "All platform data",
-            impact: "The API cannot persist data without a reachable database.",
+            impact: "API cannot persist data.",
             metadata: databaseConfigured ? { configured: "true" } : {},
             manageHref: null,
           }),
           item({
             id: "object-storage",
             name: "Cloudflare R2",
-            description:
-              "Package photo storage (presign on customer Next.js server; optional read URLs on API).",
+            description: "Package photo storage.",
             category: "infrastructure",
             status: canResolvePackagePhotoUrls() ? "connected" : "not_configured",
-            usedBy: "Delivery package photos",
-            impact:
-              "Configure R2 on the customer app for uploads; set R2_PUBLIC_BASE_URL for photo URLs in API responses.",
+            usedBy: "Package photos",
+            impact: "Package photo URLs unavailable.",
             metadata: env.R2_PUBLIC_BASE_URL
               ? { publicBase: "configured" }
               : isObjectStorageConfigured()
@@ -166,11 +163,11 @@ export class IntegrationService {
           item({
             id: "maps-geocoding",
             name: "Maps & geocoding",
-            description: "Address validation and coordinate lookup.",
+            description: "Address validation and lookup.",
             category: "infrastructure",
             status: "coming_soon",
-            usedBy: "Delivery address enrichment",
-            impact: "Coordinates must be supplied manually today.",
+            usedBy: "Address enrichment",
+            impact: "Coordinates must be entered manually.",
             metadata: {},
             manageHref: null,
           }),
@@ -179,16 +176,16 @@ export class IntegrationService {
       {
         id: "security",
         title: "Security & secrets",
-        description: "Encryption and signing configuration.",
+        description: "Secrets",
         items: [
           item({
             id: "credential-encryption",
             name: "Provider credential encryption",
-            description: "AES-256-GCM encryption for stored provider secrets.",
+            description: "AES-256-GCM for provider secrets.",
             category: "security",
             status: encryptionConfigured ? "connected" : "not_configured",
-            usedBy: "Provider API credentials at rest",
-            impact: "Provider credentials cannot be stored securely without this key.",
+            usedBy: "Provider credentials",
+            impact: "Provider secrets cannot be stored.",
             metadata: {},
             manageHref: null,
           }),

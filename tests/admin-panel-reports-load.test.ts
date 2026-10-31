@@ -118,7 +118,7 @@ describe("admin-panel reports load assembly", () => {
     expect(result.failedSections).toEqual(["orchestration"]);
     expect(result.orchestration).toBeNull();
     expect(reportsPartialFailureMessage(result.failedSections)).toContain(
-      "Orchestration accountability",
+      "Orchestration signals",
     );
   });
 
