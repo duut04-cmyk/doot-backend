@@ -113,6 +113,21 @@ model User {
   platformRuntimeSettingsUpdated PlatformRuntimeSetting[]
   orchestrationRequests          OrchestrationRequest[]
   payments                       Payment[]
+  providerInvoicesUploaded       ProviderInvoice[]              @relation("ProviderInvoiceUploadedBy")
+  providerInvoicesApproved       ProviderInvoice[]              @relation("ProviderInvoiceApprovedBy")
+  providerInvoicesVoided         ProviderInvoice[]              @relation("ProviderInvoiceVoidedBy")
+  providerAccountingEvidence     ProviderAccountingEvidence[]
+  providerPayablesApproved       ProviderPayable[]              @relation("ProviderPayableApprovedBy")
+  providerPayoutsCreated         ProviderPayout[]               @relation("ProviderPayoutCreatedBy")
+  providerPayoutsConfirmed       ProviderPayout[]               @relation("ProviderPayoutConfirmedBy")
+  providerPayoutsReversed        ProviderPayout[]               @relation("ProviderPayoutReversedBy")
+  providerPayoutReversals        ProviderPayoutReversal[]       @relation("ProviderPayoutReversalBy")
+  providerCreditNotesConfirmed   ProviderCreditNote[]           @relation("ProviderCreditNoteConfirmedBy")
+  providerCreditApplications     ProviderCreditApplication[]    @relation("ProviderCreditApplicationBy")
+  providerPayoutAllocations      ProviderPayoutAllocation[]     @relation("ProviderPayoutAllocationBy")
+  providerAccountingAdjustmentsCreated ProviderAccountingAdjustment[] @relation("ProviderAccountingAdjustmentCreatedBy")
+  providerAccountingAdjustmentsApproved ProviderAccountingAdjustment[] @relation("ProviderAccountingAdjustmentApprovedBy")
+  providerInvoiceHeaderVariances ProviderInvoiceHeaderVariance[] @relation("ProviderInvoiceHeaderVarianceBy")
 }
 
 model OAuthAccount {
@@ -225,6 +240,7 @@ model Delivery {
   paymentCreateKeys     PaymentCreateIdempotencyKey[]
   rating                DeliveryRating?
   feedback              DeliveryFeedback?
+  providerInvoiceLineAllocations ProviderInvoiceLineAllocation[]
 
   @@index([customerId])
   @@index([status])
@@ -443,6 +459,20 @@ enum AdminAuditAction {
   PROVIDER_VEHICLE_CREATED
   PROVIDER_VEHICLE_UPDATED
   PLATFORM_RUNTIME_SETTING_UPDATED
+  PROVIDER_INVOICE_UPLOADED
+  PROVIDER_INVOICE_SUBMITTED
+  PROVIDER_INVOICE_APPROVED
+  PROVIDER_INVOICE_DISPUTED
+  PROVIDER_INVOICE_VOIDED
+  PROVIDER_PAYABLE_APPROVED
+  PROVIDER_PAYOUT_CREATED
+  PROVIDER_PAYOUT_CONFIRMED
+  PROVIDER_PAYOUT_ALLOCATED
+  PROVIDER_PAYOUT_REVERSED
+  PROVIDER_CREDIT_NOTE_CONFIRMED
+  PROVIDER_CREDIT_APPLICATION_CONFIRMED
+  PROVIDER_ACCOUNTING_ADJUSTMENT_CREATED
+  PROVIDER_ACCOUNTING_ADJUSTMENT_APPROVED
 }
 
 enum AdminAuditResourceType {
@@ -452,6 +482,12 @@ enum AdminAuditResourceType {
   PROVIDER_CREDENTIALS
   PROVIDER_CAPABILITIES
   PLATFORM_RUNTIME_SETTING
+  PROVIDER_INVOICE
+  PROVIDER_INVOICE_LINE
+  PROVIDER_PAYABLE
+  PROVIDER_PAYOUT
+  PROVIDER_CREDIT_NOTE
+  PROVIDER_ACCOUNTING_ADJUSTMENT
 }
 
 enum PlatformRuntimeSettingKey {
@@ -484,6 +520,12 @@ model Provider {
   capabilities ProviderCapabilityRecord[]
   services     ProviderService[]
   vehicles     ProviderVehicle[]
+  providerInvoices            ProviderInvoice[]
+  providerPayables            ProviderPayable[]
+  providerPayouts             ProviderPayout[]
+  providerCreditNotes         ProviderCreditNote[]
+  providerAccountingEvidence  ProviderAccountingEvidence[]
+  providerAccountingAdjustments ProviderAccountingAdjustment[]
 
   @@index([status])
   @@index([enabled])
@@ -791,6 +833,7 @@ model ProviderBooking {
   updatedAt              DateTime              @updatedAt
 
   delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  providerInvoiceLineAllocations ProviderInvoiceLineAllocation[]
 
   @@unique([deliveryId, attemptNumber])
   @@index([deliveryId])
@@ -1188,4 +1231,493 @@ model DeliveryFeedback {
   customer User     @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
   @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// Provider accounting (Release 2.1) — manual invoices, payables, payouts, credits.
+// Separate from customer Payment / LedgerEntry. No quote-derived payables.
+// ---------------------------------------------------------------------------
+
+enum ProviderAccountingCurrency {
+  INR
+}
+
+enum ProviderInvoiceStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  DISPUTED
+  VOID
+}
+
+enum ProviderInvoiceLineKind {
+  DELIVERY_CHARGE
+  WAITING_FEE
+  RTO_CHARGE
+  SURCHARGE
+  HEADER_VARIANCE
+  OTHER
+}
+
+enum ProviderInvoiceHeaderVarianceResolution {
+  PENDING
+  LINES_CORRECTED
+  VARIANCE_ADJUSTMENT
+  RESOLVED_AT_APPROVAL
+}
+
+enum ProviderPayableStatus {
+  APPROVED
+  PARTIALLY_SETTLED
+  SETTLED
+  DISPUTED
+  VOID
+}
+
+/// Set by service when outstanding reaches zero; never implies bank payout for CREDIT-only.
+enum ProviderPayableSettlementKind {
+  PAYOUT
+  CREDIT
+  MIXED
+  ADJUSTMENT_ONLY
+}
+
+enum ProviderPayableAttributionStatus {
+  FULLY_ATTRIBUTED
+  PARTIALLY_ATTRIBUTED
+  UNATTRIBUTED
+}
+
+enum ProviderPayoutStatus {
+  DRAFT
+  INITIATED
+  CONFIRMED
+  FAILED
+  REVERSED
+}
+
+enum ProviderPayoutMethod {
+  BANK_TRANSFER
+  UPI
+  NEFT
+  IMPS
+  RTGS
+  CHEQUE
+  OTHER
+}
+
+enum ProviderPayoutAllocationState {
+  PLANNED
+  EFFECTIVE
+  VOID
+}
+
+enum ProviderCreditNoteStatus {
+  DRAFT
+  SUBMITTED
+  CONFIRMED
+  DISPUTED
+  VOID
+}
+
+enum ProviderCreditNoteLineKind {
+  DELIVERY_CREDIT
+  RTO_CREDIT
+  SURCHARGE_REVERSAL
+  OTHER
+}
+
+enum ProviderCreditApplicationState {
+  PLANNED
+  CONFIRMED
+  VOID
+}
+
+enum ProviderAccountingAdjustmentType {
+  PAYABLE_INCREASE
+  PAYABLE_DECREASE
+  INVOICE_CORRECTION
+  HEADER_VARIANCE
+  WRITE_OFF
+  OTHER
+}
+
+enum ProviderAccountingAdjustmentStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  VOID
+}
+
+model ProviderAccountingEvidence {
+  id               String   @id @default(uuid()) @db.Uuid
+  providerId       String   @db.Uuid
+  contentSha256    String
+  objectKey        String
+  storageProvider  String   @default("PENDING")
+  mimeType         String
+  fileSizeBytes    Int
+  originalFilename String
+  uploadedByUserId String   @db.Uuid
+  uploadedAt       DateTime @default(now())
+
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  uploadedBy User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  invoiceDocument    ProviderInvoiceDocument?
+  creditNoteDocument ProviderCreditNoteDocument?
+  payoutDocuments    ProviderPayoutDocument[]
+  payoutReversal     ProviderPayoutReversal?
+  adjustments        ProviderAccountingAdjustment[]
+
+  @@unique([providerId, contentSha256])
+  @@index([providerId])
+  @@index([uploadedAt])
+}
+
+model ProviderInvoice {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  providerId          String                     @db.Uuid
+  invoiceReference    String
+  invoiceDate         DateTime                   @db.Date
+  receivedDate        DateTime?                  @db.Date
+  currency            ProviderAccountingCurrency @default(INR)
+  status              ProviderInvoiceStatus      @default(DRAFT)
+  headerGrossReported Decimal                    @db.Decimal(12, 2)
+  lineNetTotal        Decimal                    @default(0) @db.Decimal(12, 2)
+  lineTaxTotal        Decimal                    @default(0) @db.Decimal(12, 2)
+  lineGrossTotal      Decimal                    @default(0) @db.Decimal(12, 2)
+  replacesInvoiceId   String?                    @db.Uuid
+  disputeReason       String?
+  voidReason          String?
+  reviewNotes         String?
+  uploadedByUserId    String                     @db.Uuid
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  approvedByUserId    String?                    @db.Uuid
+  voidedAt            DateTime?
+  voidedByUserId      String?                    @db.Uuid
+  idempotencyKey      String?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  provider             Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  uploadedBy           User     @relation("ProviderInvoiceUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  approvedBy           User?    @relation("ProviderInvoiceApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  voidedBy             User?    @relation("ProviderInvoiceVoidedBy", fields: [voidedByUserId], references: [id], onDelete: Restrict)
+  replacesInvoice      ProviderInvoice?  @relation("ProviderInvoiceReplacement", fields: [replacesInvoiceId], references: [id], onDelete: Restrict)
+  replacedByInvoices   ProviderInvoice[] @relation("ProviderInvoiceReplacement")
+  lines                ProviderInvoiceLine[]
+  documents            ProviderInvoiceDocument[]
+  payables             ProviderPayable[]
+  headerVariance       ProviderInvoiceHeaderVariance?
+  adjustments          ProviderAccountingAdjustment[]
+
+  @@unique([providerId, invoiceReference])
+  @@unique([providerId, idempotencyKey])
+  @@index([providerId, status])
+  @@index([invoiceDate])
+  @@index([createdAt])
+}
+
+model ProviderInvoiceHeaderVariance {
+  id                   String                                  @id @default(uuid()) @db.Uuid
+  invoiceId            String                                  @unique @db.Uuid
+  headerGrossReported  Decimal                                 @db.Decimal(12, 2)
+  calculatedGross      Decimal                                 @db.Decimal(12, 2)
+  varianceAmount       Decimal                                 @db.Decimal(12, 2)
+  resolution           ProviderInvoiceHeaderVarianceResolution @default(PENDING)
+  resolutionNotes      String?
+  resolvedByUserId     String?                                 @db.Uuid
+  resolvedAt           DateTime?
+  resolutionAdjustmentId String?                               @unique @db.Uuid
+  createdAt            DateTime                                @default(now())
+  updatedAt            DateTime                                @updatedAt
+
+  invoice              ProviderInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  resolvedBy           User?           @relation("ProviderInvoiceHeaderVarianceBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolutionAdjustment ProviderAccountingAdjustment? @relation("HeaderVarianceAdjustment", fields: [resolutionAdjustmentId], references: [id], onDelete: Restrict)
+
+  @@index([resolution])
+}
+
+model ProviderInvoiceDocument {
+  id         String @id @default(uuid()) @db.Uuid
+  invoiceId  String @db.Uuid
+  evidenceId String @unique @db.Uuid
+
+  invoice  ProviderInvoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  evidence ProviderAccountingEvidence @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+}
+
+model ProviderInvoiceLine {
+  id              String                     @id @default(uuid()) @db.Uuid
+  invoiceId       String                     @db.Uuid
+  lineNumber      Int
+  kind            ProviderInvoiceLineKind    @default(DELIVERY_CHARGE)
+  description     String
+  quantity        Decimal                    @default(1) @db.Decimal(12, 4)
+  unitAmountExTax Decimal                    @db.Decimal(12, 2)
+  lineNet         Decimal                    @db.Decimal(12, 2)
+  lineTax         Decimal                    @default(0) @db.Decimal(12, 2)
+  taxRateBps      Int?
+  lineGross       Decimal                    @db.Decimal(12, 2)
+  currency        ProviderAccountingCurrency @default(INR)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  invoice     ProviderInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  allocations ProviderInvoiceLineAllocation[]
+  payable     ProviderPayable?
+
+  @@unique([invoiceId, lineNumber])
+  @@index([invoiceId])
+}
+
+model ProviderInvoiceLineAllocation {
+  id                String   @id @default(uuid()) @db.Uuid
+  lineId            String   @db.Uuid
+  deliveryId        String   @db.Uuid
+  providerBookingId String?  @db.Uuid
+  attributedAmount  Decimal  @db.Decimal(12, 2)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  line            ProviderInvoiceLine @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  delivery        Delivery            @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+  providerBooking ProviderBooking?    @relation(fields: [providerBookingId], references: [id], onDelete: Restrict)
+
+  @@index([lineId])
+  @@index([deliveryId])
+  @@index([providerBookingId])
+}
+
+model ProviderPayable {
+  id                          String                         @id @default(uuid()) @db.Uuid
+  providerId                  String                         @db.Uuid
+  providerInvoiceId           String                         @db.Uuid
+  providerInvoiceLineId       String                         @unique @db.Uuid
+  currency                    ProviderAccountingCurrency     @default(INR)
+  sourceAmount                Decimal                        @db.Decimal(12, 2)
+  approvedAmount              Decimal                        @db.Decimal(12, 2)
+  status                      ProviderPayableStatus          @default(APPROVED)
+  settlementKind              ProviderPayableSettlementKind?
+  attributionStatus           ProviderPayableAttributionStatus @default(UNATTRIBUTED)
+  attributedAmount            Decimal                        @default(0) @db.Decimal(12, 2)
+  providerLevelOverrideReason String?
+  approvedAt                  DateTime
+  approvedByUserId            String                         @db.Uuid
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+
+  provider            Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  invoice             ProviderInvoice     @relation(fields: [providerInvoiceId], references: [id], onDelete: Restrict)
+  invoiceLine         ProviderInvoiceLine @relation(fields: [providerInvoiceLineId], references: [id], onDelete: Restrict)
+  approvedBy          User                @relation("ProviderPayableApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  payoutAllocations   ProviderPayoutAllocation[]
+  creditApplications  ProviderCreditApplication[]
+  adjustments         ProviderAccountingAdjustment[]
+
+  @@index([providerId, status])
+  @@index([providerInvoiceId])
+}
+
+model ProviderPayout {
+  id                String                     @id @default(uuid()) @db.Uuid
+  providerId        String                     @db.Uuid
+  payoutReference   String
+  status            ProviderPayoutStatus       @default(DRAFT)
+  amount            Decimal                    @db.Decimal(12, 2)
+  currency          ProviderAccountingCurrency @default(INR)
+  method            ProviderPayoutMethod
+  bankReference     String?
+  paymentDate       DateTime                   @db.Date
+  notes             String?
+  createdByUserId   String                     @db.Uuid
+  confirmedAt       DateTime?
+  confirmedByUserId String?                    @db.Uuid
+  failedAt          DateTime?
+  reversedAt        DateTime?
+  reversedByUserId  String?                    @db.Uuid
+  idempotencyKey    String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  createdBy   User     @relation("ProviderPayoutCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  confirmedBy User?    @relation("ProviderPayoutConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  reversedBy  User?    @relation("ProviderPayoutReversedBy", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+  allocations ProviderPayoutAllocation[]
+  documents   ProviderPayoutDocument[]
+  reversal    ProviderPayoutReversal?
+  adjustments ProviderAccountingAdjustment[]
+
+  @@unique([providerId, payoutReference])
+  @@unique([providerId, idempotencyKey])
+  @@index([providerId, status])
+  @@index([paymentDate])
+}
+
+model ProviderPayoutDocument {
+  id         String @id @default(uuid()) @db.Uuid
+  payoutId   String @db.Uuid
+  evidenceId String @unique @db.Uuid
+
+  payout   ProviderPayout             @relation(fields: [payoutId], references: [id], onDelete: Restrict)
+  evidence ProviderAccountingEvidence @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
+
+  @@index([payoutId])
+}
+
+model ProviderPayoutReversal {
+  id                  String   @id @default(uuid()) @db.Uuid
+  payoutId            String   @unique @db.Uuid
+  bankReturnReference String?
+  reason              String
+  reversedByUserId    String   @db.Uuid
+  reversedAt          DateTime @default(now())
+  evidenceId          String?  @unique @db.Uuid
+  createdAt           DateTime @default(now())
+
+  payout     ProviderPayout             @relation(fields: [payoutId], references: [id], onDelete: Restrict)
+  reversedBy User                       @relation("ProviderPayoutReversalBy", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+  evidence   ProviderAccountingEvidence? @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
+}
+
+model ProviderPayoutAllocation {
+  id              String                        @id @default(uuid()) @db.Uuid
+  payoutId        String                        @db.Uuid
+  payableId       String                        @db.Uuid
+  providerId      String                        @db.Uuid
+  currency        ProviderAccountingCurrency
+  amount          Decimal                       @db.Decimal(12, 2)
+  state           ProviderPayoutAllocationState @default(PLANNED)
+  idempotencyKey  String                        @unique
+  confirmedAt     DateTime?
+  createdByUserId String                        @db.Uuid
+  createdAt       DateTime                      @default(now())
+
+  payout    ProviderPayout  @relation(fields: [payoutId], references: [id], onDelete: Restrict)
+  payable   ProviderPayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  createdBy User            @relation("ProviderPayoutAllocationBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payableId])
+  @@index([payoutId])
+  @@index([providerId])
+  @@index([state])
+}
+
+model ProviderCreditNote {
+  id                String                     @id @default(uuid()) @db.Uuid
+  providerId        String                     @db.Uuid
+  creditReference   String
+  creditDate        DateTime                   @db.Date
+  receivedDate      DateTime?                  @db.Date
+  currency          ProviderAccountingCurrency @default(INR)
+  status            ProviderCreditNoteStatus   @default(DRAFT)
+  grossTotal        Decimal                    @db.Decimal(12, 2)
+  notes             String?
+  confirmedAt       DateTime?
+  confirmedByUserId String?                    @db.Uuid
+  idempotencyKey    String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  provider     Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  confirmedBy  User?    @relation("ProviderCreditNoteConfirmedBy", fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  lines        ProviderCreditNoteLine[]
+  documents    ProviderCreditNoteDocument[]
+  applications ProviderCreditApplication[]
+
+  @@unique([providerId, creditReference])
+  @@unique([providerId, idempotencyKey])
+  @@index([providerId, status])
+}
+
+model ProviderCreditNoteDocument {
+  id           String @id @default(uuid()) @db.Uuid
+  creditNoteId String @db.Uuid
+  evidenceId   String @unique @db.Uuid
+
+  creditNote ProviderCreditNote         @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+  evidence   ProviderAccountingEvidence @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
+
+  @@index([creditNoteId])
+}
+
+model ProviderCreditNoteLine {
+  id           String                     @id @default(uuid()) @db.Uuid
+  creditNoteId String                     @db.Uuid
+  lineNumber   Int
+  kind         ProviderCreditNoteLineKind @default(DELIVERY_CREDIT)
+  description  String
+  lineGross    Decimal                    @db.Decimal(12, 2)
+  currency     ProviderAccountingCurrency @default(INR)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  creditNote ProviderCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+
+  @@unique([creditNoteId, lineNumber])
+  @@index([creditNoteId])
+}
+
+model ProviderCreditApplication {
+  id              String                         @id @default(uuid()) @db.Uuid
+  creditNoteId    String                         @db.Uuid
+  payableId       String                         @db.Uuid
+  providerId      String                         @db.Uuid
+  currency        ProviderAccountingCurrency
+  amount          Decimal                        @db.Decimal(12, 2)
+  state           ProviderCreditApplicationState @default(PLANNED)
+  idempotencyKey  String                         @unique
+  confirmedAt     DateTime?
+  createdByUserId String                         @db.Uuid
+  createdAt       DateTime                       @default(now())
+
+  creditNote ProviderCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+  payable    ProviderPayable    @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  createdBy  User               @relation("ProviderCreditApplicationBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([creditNoteId])
+  @@index([payableId])
+  @@index([providerId])
+  @@index([state])
+}
+
+model ProviderAccountingAdjustment {
+  id                String                             @id @default(uuid()) @db.Uuid
+  providerId        String                             @db.Uuid
+  payableId         String                             @db.Uuid
+  providerInvoiceId String?                            @db.Uuid
+  providerPayoutId    String?                            @db.Uuid
+  type              ProviderAccountingAdjustmentType
+  status            ProviderAccountingAdjustmentStatus @default(PENDING_APPROVAL)
+  amount            Decimal                            @db.Decimal(12, 2)
+  currency          ProviderAccountingCurrency
+  reason            String
+  evidenceId        String?                            @db.Uuid
+  createdByUserId   String                             @db.Uuid
+  approvedByUserId  String?                            @db.Uuid
+  approvedAt        DateTime?
+  idempotencyKey    String?                            @unique
+  createdAt         DateTime                           @default(now())
+  updatedAt         DateTime                           @updatedAt
+
+  provider       Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  payable        ProviderPayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  invoice        ProviderInvoice? @relation(fields: [providerInvoiceId], references: [id], onDelete: Restrict)
+  payout         ProviderPayout? @relation(fields: [providerPayoutId], references: [id], onDelete: Restrict)
+  evidence       ProviderAccountingEvidence? @relation(fields: [evidenceId], references: [id], onDelete: Restrict)
+  createdBy      User @relation("ProviderAccountingAdjustmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedBy     User? @relation("ProviderAccountingAdjustmentApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  headerVariance ProviderInvoiceHeaderVariance? @relation("HeaderVarianceAdjustment")
+
+  @@index([payableId])
+  @@index([providerId, status])
+  @@index([providerInvoiceId])
 }
