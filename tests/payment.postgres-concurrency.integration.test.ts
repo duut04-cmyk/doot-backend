@@ -6,20 +6,19 @@ import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaymentGateway } from "../src/modules/payment/gateways/payment-gateway.interface.js";
-import { assertPostgresConcurrencyTestDatabaseUrl } from "./helpers/postgres-concurrency-test-database.js";
+import { tryPostgresConcurrencyTestDatabaseUrl } from "./helpers/postgres-concurrency-test-database.js";
 
 const rawTestDatabaseUrl = process.env.TEST_DATABASE_URL;
 
-let validatedTestDatabaseUrl: string | undefined;
-if (rawTestDatabaseUrl) {
-  validatedTestDatabaseUrl =
-    assertPostgresConcurrencyTestDatabaseUrl(rawTestDatabaseUrl);
+const validatedTestDatabaseUrl =
+  tryPostgresConcurrencyTestDatabaseUrl(rawTestDatabaseUrl);
+if (validatedTestDatabaseUrl) {
   process.env.DATABASE_URL = validatedTestDatabaseUrl;
   process.env.DIRECT_URL = validatedTestDatabaseUrl;
   process.env.NODE_ENV = "test";
 }
 
-const describePg = rawTestDatabaseUrl ? describe : describe.skip;
+const describePg = validatedTestDatabaseUrl ? describe : describe.skip;
 
 const gatewayMocks = vi.hoisted(() => ({
   createRefund: vi.fn<PaymentGateway["createRefund"]>(),

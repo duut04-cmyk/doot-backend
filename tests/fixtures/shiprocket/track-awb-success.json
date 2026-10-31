@@ -1,0 +1,30 @@
+{
+  "tracking_data": {
+    "track_status": 1,
+    "shipment_status": "IN TRANSIT",
+    "track_url": "https://shiprocket.example/track/SR123456789IN",
+    "etd": "2026-04-01 18:00:00",
+    "shipment_track": [
+      {
+        "awb_code": "SR123456789IN",
+        "courier_name": "QuickCourier",
+        "courier_company_id": 101,
+        "shipment_id": 15151515,
+        "order_id": 16161616,
+        "current_status": "IN TRANSIT",
+        "pickup_date": "2026-03-28 10:00:00",
+        "delivered_date": null
+      }
+    ],
+    "shipment_track_activities": [
+      {
+        "date": "2026-03-28 14:30:00",
+        "status": "IT",
+        "activity": "Shipment picked up",
+        "location": "Delhi",
+        "sr-status": "17",
+        "sr-status-label": "In Transit"
+      }
+    ]
+  }
+}

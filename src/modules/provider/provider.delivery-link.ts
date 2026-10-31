@@ -1,3 +1,8 @@
+import type {
+  ShiprocketTrackingWebhookDeliveryLink,
+  ShiprocketTrackingWebhookLinkInput,
+} from "./provider.delivery-link.types.js";
+
 /**
  * Resolves Dutt Delivery IDs from provider booking references.
  * Full linkage becomes active when create-order/booking is implemented in Phase 4C.
@@ -8,17 +13,18 @@ export interface ProviderDeliveryLinkResolver {
     providerOrderId?: string | null;
     providerDeliveryId?: string | null;
   }): Promise<string | null>;
+
+  resolveShiprocketTrackingWebhook?(
+    input: ShiprocketTrackingWebhookLinkInput,
+  ): Promise<ShiprocketTrackingWebhookDeliveryLink>;
 }
 
-export class NullProviderDeliveryLinkResolver
-  implements ProviderDeliveryLinkResolver
-{
+export class NullProviderDeliveryLinkResolver implements ProviderDeliveryLinkResolver {
   async findDeliveryIdByProviderRefs(): Promise<string | null> {
     return null;
   }
 }
 
-export const nullProviderDeliveryLinkResolver =
-  new NullProviderDeliveryLinkResolver();
+export const nullProviderDeliveryLinkResolver = new NullProviderDeliveryLinkResolver();
 
 export { prismaProviderDeliveryLinkResolver } from "./provider.delivery-link.prisma.js";

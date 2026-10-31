@@ -25,6 +25,7 @@ import { InMemoryProviderRepository } from "./helpers/in-memory-provider-reposit
 import { initializeProviderAdapters } from "../src/modules/provider/adapters/bootstrap.js";
 import { ProviderAdapterExecutor } from "../src/modules/provider/adapters/provider-adapter-executor.js";
 import { knownFixedFeeCancellationPolicy } from "./helpers/cancellation-policy-test-helpers.js";
+import { createTestRuntimeSettingsService } from "./helpers/test-runtime-settings.js";
 
 describe("Booking HTTP", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -68,6 +69,7 @@ describe("Booking HTTP", () => {
       bookingRepo,
       executor,
       paymentRepo,
+      createTestRuntimeSettingsService(),
     );
     const controller = new BookingController(service);
     const app = express();

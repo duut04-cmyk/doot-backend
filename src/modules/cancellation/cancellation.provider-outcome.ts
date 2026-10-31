@@ -17,8 +17,7 @@ export function resolveCancellationResult(
   result: NormalizedCancellationResult,
 ): ResolvedCancellationOutcome {
   const outcome: CancellationOutcome =
-    result.outcome ??
-    (result.success ? "CANCELLED" : "REJECTED");
+    result.outcome ?? (result.success ? "CANCELLED" : "REJECTED");
 
   return {
     outcome,
@@ -27,14 +26,15 @@ export function resolveCancellationResult(
     failureCode:
       outcome === "REJECTED"
         ? ErrorCodes.PROVIDER_CANCELLATION_REJECTED
-        : null,
-    failureMessage: outcome === "REJECTED" ? result.reason : null,
+        : outcome === "UNKNOWN"
+          ? ErrorCodes.CANCELLATION_UNKNOWN
+          : null,
+    failureMessage:
+      outcome === "REJECTED" || outcome === "UNKNOWN" ? result.reason : null,
   };
 }
 
-export function classifyCancellationError(
-  error: unknown,
-): ResolvedCancellationOutcome {
+export function classifyCancellationError(error: unknown): ResolvedCancellationOutcome {
   if (error instanceof ProviderAdapterError) {
     const unknown = new Set([
       "PROVIDER_TIMEOUT",

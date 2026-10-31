@@ -17,6 +17,7 @@ import { InMemoryBookingRepository } from "./helpers/in-memory-booking-repositor
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
+import { createTestRuntimeSettingsService } from "./helpers/test-runtime-settings.js";
 
 function configureExecuteMock(
   executeMock: ReturnType<typeof vi.fn>,
@@ -58,6 +59,7 @@ describe("Booking failure resilience", () => {
       bookingRepo,
       { execute: executeMock } as unknown as ProviderAdapterExecutor,
       paymentRepo,
+      createTestRuntimeSettingsService(),
     );
   }
 

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": 16161616,
+    "status": "CANCELLED",
+    "status_code": 5,
+    "awb_code": null,
+    "shipments": [
+      {
+        "id": 15151515
+      }
+    ]
+  }
+}

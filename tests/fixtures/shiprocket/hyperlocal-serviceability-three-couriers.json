@@ -1,0 +1,27 @@
+{
+  "status": true,
+  "message": "Serviceability fetched",
+  "data": [
+    {
+      "courier_name": "Courier Alpha",
+      "courier_company_id": 201,
+      "rate_id": "hl-rate-201",
+      "rates": 120,
+      "eta": 25
+    },
+    {
+      "courier_name": "Courier Beta",
+      "courier_company_id": 202,
+      "rate_id": "hl-rate-202",
+      "rates": 95.5,
+      "etd": "40 mins"
+    },
+    {
+      "courier_name": "Courier Gamma",
+      "courier_company_id": 203,
+      "rate_id": "hl-rate-203",
+      "rates": 110,
+      "eta": 30
+    }
+  ]
+}

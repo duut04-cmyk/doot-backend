@@ -24,6 +24,7 @@ export const normalizedProviderWebhookEventSchema = z.object({
       longitude: true,
       eta: true,
       trackingUrl: true,
+      metadata: true,
     })
     .nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),

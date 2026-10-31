@@ -12,7 +12,8 @@ export type NormalizedTrackingStatus =
   | "UNKNOWN";
 
 const KEYWORD_MAP: Array<[RegExp, NormalizedTrackingStatus]> = [
-  [/delivered|finished|completed/i, "DELIVERED"],
+  [/\bundelivered\b/i, "UNKNOWN"],
+  [/\bdelivered\b|\bfinished\b|\bcompleted\b/i, "DELIVERED"],
   [/cancel/i, "CANCELLED"],
   [/pick.?up|picked/i, "PICKED_UP"],
   [/in.?transit|transit|on.?the.?way|out.?for.?delivery/i, "IN_TRANSIT"],

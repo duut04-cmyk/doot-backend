@@ -8,6 +8,7 @@ import { getPrismaClient } from "../../config/database.js";
 import type { CreateAuditInput } from "../provider/provider.types.js";
 import {
   isPlatformRuntimeSettingsStoreUnavailable,
+  isPrismaRuntimeConnectivityError,
   toRuntimeSettingsStorageUnavailableError,
 } from "./runtime-settings.storage-errors.js";
 
@@ -48,7 +49,10 @@ export interface IRuntimeSettingsRepository {
 }
 
 function handleRuntimeSettingsQueryError(error: unknown): never {
-  if (isPlatformRuntimeSettingsStoreUnavailable(error)) {
+  if (
+    isPlatformRuntimeSettingsStoreUnavailable(error) ||
+    isPrismaRuntimeConnectivityError(error)
+  ) {
     throw toRuntimeSettingsStorageUnavailableError(error);
   }
   throw error;

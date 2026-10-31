@@ -18,6 +18,8 @@ import {
   ShiprocketAuthService,
   shiprocketAuthService,
 } from "./shiprocket-auth.service.js";
+import { shiprocketAuthenticatedReadRequest } from "./shiprocket-authenticated-http.util.js";
+import { SHIPROCKET_JSON_READ_HEADERS } from "./shiprocket.constants.js";
 import { buildHyperlocalServiceabilityPath } from "./shiprocket-hyperlocal.query.js";
 import { parseShiprocketHyperlocalServiceability } from "./shiprocket-hyperlocal.parser.js";
 import type { ParsedHyperlocalRateCandidate } from "./shiprocket.types.js";
@@ -33,6 +35,10 @@ export type ShiprocketHyperlocalFetchResult = {
   shiprocketHyperlocalRates: unknown[];
   pickupPostcode: string;
   deliveryPostcode: string;
+  pickupCity: string | null;
+  pickupState: string | null;
+  deliveryCity: string | null;
+  deliveryState: string | null;
 };
 
 function defaultUnknownAvailability(): AvailabilityResult {
@@ -90,11 +96,6 @@ export class ShiprocketHyperlocalServiceabilityService {
         this.geocoding.reverseGeocode(dropCoords.latitude, dropCoords.longitude),
       ]);
 
-      const token = await this.auth.getBearerToken({
-        config: ctx.config,
-        requestId: ctx.requestId,
-      });
-
       const path = buildHyperlocalServiceabilityPath({
         pickupPostcode: pickupGeo.postalCode,
         deliveryPostcode: dropGeo.postalCode,
@@ -106,28 +107,20 @@ export class ShiprocketHyperlocalServiceabilityService {
         cod: "0",
       });
 
-      const callServiceability = async (bearerToken: string) =>
-        this.http.request({
-          config: ctx.config,
-          operation: "checkServiceability",
-          requestId: ctx.requestId,
-          request: {
-            method: "GET",
-            path,
-            headers: { authorization: `Bearer ${bearerToken}` },
-          },
-          allowErrorResponseBody: true,
-        });
-
-      let response = await callServiceability(token);
-      if (response.status === 401) {
-        const refreshed = await this.auth.getBearerToken({
-          config: ctx.config,
-          requestId: ctx.requestId,
-          forceRefresh: true,
-        });
-        response = await callServiceability(refreshed);
-      }
+      const response = await shiprocketAuthenticatedReadRequest({
+        http: this.http,
+        auth: this.auth,
+        config: ctx.config,
+        requestId: ctx.requestId,
+        operation: "checkServiceability",
+        resourceLabel: "serviceability",
+        allowErrorResponseBody: true,
+        request: {
+          method: "GET",
+          path,
+          headers: SHIPROCKET_JSON_READ_HEADERS,
+        },
+      });
 
       if (response.status === 498) {
         throw new ProviderAdapterError({
@@ -171,7 +164,7 @@ export class ShiprocketHyperlocalServiceabilityService {
       }
 
       const parsed = parseShiprocketHyperlocalServiceability(response.data);
-      if (!parsed.success) {
+      if (parsed.malformed || !parsed.success) {
         throw new ProviderAdapterError({
           providerCode,
           operation: "checkServiceability",
@@ -186,7 +179,10 @@ export class ShiprocketHyperlocalServiceabilityService {
       const serviceability: NormalizedServiceabilityResult = {
         serviceable,
         providerReference: null,
-        reason: serviceable ? null : "No hyperlocal couriers available for this route.",
+        reason: serviceable
+          ? null
+          : (parsed.providerMessage ??
+            "No hyperlocal couriers available for this route."),
         availableServices: [],
         checkedAt,
       };
@@ -198,6 +194,10 @@ export class ShiprocketHyperlocalServiceabilityService {
           shiprocketCourierName: candidate.courierName,
           shiprocketPickupPostcode: pickupGeo.postalCode,
           shiprocketDeliveryPostcode: dropGeo.postalCode,
+          ...(pickupGeo.city ? { shiprocketPickupCity: pickupGeo.city } : {}),
+          ...(pickupGeo.state ? { shiprocketPickupState: pickupGeo.state } : {}),
+          ...(dropGeo.city ? { shiprocketDeliveryCity: dropGeo.city } : {}),
+          ...(dropGeo.state ? { shiprocketDeliveryState: dropGeo.state } : {}),
         },
       }));
 
@@ -209,6 +209,10 @@ export class ShiprocketHyperlocalServiceabilityService {
         shiprocketHyperlocalRates: parsed.rawEntries,
         pickupPostcode: pickupGeo.postalCode,
         deliveryPostcode: dropGeo.postalCode,
+        pickupCity: pickupGeo.city,
+        pickupState: pickupGeo.state,
+        deliveryCity: dropGeo.city,
+        deliveryState: dropGeo.state,
       };
     } catch (error) {
       if (error instanceof GeocodingValidationError) {

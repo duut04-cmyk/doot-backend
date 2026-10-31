@@ -2,6 +2,7 @@ import { logger } from "../../../config/logger.js";
 import { ProviderAdapterError } from "../contracts/provider-error.js";
 import type { AdapterOperation } from "./provider-adapter.types.js";
 import type { ProviderRuntimeConfig } from "./provider-config.types.js";
+import type { ShiprocketLiveLifecycleHttpExchangeOutcome } from "./shiprocket/shiprocket-live-lifecycle-artifacts.js";
 
 const REDACTED_HEADER_NAMES = new Set([
   "authorization",
@@ -59,6 +60,34 @@ export class ProviderHttpClient {
       ...input.request.headers,
     };
 
+    let exchangeRecorded = false;
+
+    const recordAttempt = async (payload: {
+      outcome: ShiprocketLiveLifecycleHttpExchangeOutcome;
+      status: number | null;
+      responseBody: unknown;
+      durationMs: number;
+      errorCategory?: string | null;
+      safeErrorMessage?: string | null;
+    }): Promise<void> => {
+      if (exchangeRecorded) {
+        return;
+      }
+      exchangeRecorded = true;
+      await recordShiprocketLiveLifecycleExchange({
+        config: input.config,
+        request: input.request,
+        headers,
+        status: payload.status,
+        requestBody: input.request.body,
+        responseBody: payload.responseBody,
+        durationMs: payload.durationMs,
+        outcome: payload.outcome,
+        errorCategory: payload.errorCategory,
+        safeErrorMessage: payload.safeErrorMessage,
+      });
+    };
+
     try {
       const response = await this.fetchImpl(url, {
         method: input.request.method,
@@ -91,36 +120,80 @@ export class ProviderHttpClient {
         "provider_http_response",
       );
 
+      if (response.ok && text.length > 0 && typeof data === "string") {
+        const parseMessage = "Response body was not valid JSON.";
+        await recordAttempt({
+          outcome: "parse_error",
+          status: response.status,
+          responseBody: data,
+          durationMs,
+          errorCategory: "PROVIDER_UNKNOWN_ERROR",
+          safeErrorMessage: parseMessage,
+        });
+        throw new ProviderAdapterError({
+          providerCode: input.config.providerCode,
+          operation: input.operation,
+          category: "PROVIDER_UNKNOWN_ERROR",
+          safeMessage: parseMessage,
+          retryable: false,
+          requestId: input.requestId,
+        });
+      }
+
       if (!response.ok) {
+        const errorBodyResponse = {
+          status: response.status,
+          data,
+          headers: Object.fromEntries(response.headers.entries()),
+          durationMs,
+        };
+
         if (
           input.allowErrorResponseBody &&
           response.status >= 400 &&
           response.status < 500
         ) {
-          return {
+          await recordAttempt({
+            outcome: "http_error",
             status: response.status,
-            data,
-            headers: Object.fromEntries(response.headers.entries()),
+            responseBody: data,
             durationMs,
-          };
+            errorCategory: "PROVIDER_VALIDATION_ERROR",
+            safeErrorMessage: `Provider HTTP request failed with status ${response.status}.`,
+          });
+          return errorBodyResponse;
         }
+
         const edgeAccessDenied = response.status === 498;
+        const category = edgeAccessDenied
+          ? "PROVIDER_SERVICE_UNAVAILABLE"
+          : response.status === 429
+            ? "PROVIDER_RATE_LIMITED"
+            : response.status >= 500
+              ? "PROVIDER_SERVICE_UNAVAILABLE"
+              : response.status === 401
+                ? "PROVIDER_AUTHENTICATION_ERROR"
+                : response.status === 403
+                  ? "PROVIDER_AUTHORIZATION_ERROR"
+                  : response.status === 404
+                    ? "PROVIDER_NOT_FOUND"
+                    : "PROVIDER_VALIDATION_ERROR";
+
+        await recordAttempt({
+          outcome: "http_error",
+          status: response.status,
+          responseBody: data,
+          durationMs,
+          errorCategory: category,
+          safeErrorMessage: edgeAccessDenied
+            ? "Provider access was denied by edge infrastructure."
+            : `Provider HTTP request failed with status ${response.status}.`,
+        });
+
         throw new ProviderAdapterError({
           providerCode: input.config.providerCode,
           operation: input.operation,
-          category: edgeAccessDenied
-            ? "PROVIDER_SERVICE_UNAVAILABLE"
-            : response.status === 429
-              ? "PROVIDER_RATE_LIMITED"
-              : response.status >= 500
-                ? "PROVIDER_SERVICE_UNAVAILABLE"
-                : response.status === 401
-                  ? "PROVIDER_AUTHENTICATION_ERROR"
-                  : response.status === 403
-                    ? "PROVIDER_AUTHORIZATION_ERROR"
-                    : response.status === 404
-                      ? "PROVIDER_NOT_FOUND"
-                      : "PROVIDER_VALIDATION_ERROR",
+          category,
           safeMessage: edgeAccessDenied
             ? "Provider access was denied by edge infrastructure."
             : `Provider HTTP request failed with status ${response.status}.`,
@@ -130,15 +203,37 @@ export class ProviderHttpClient {
         });
       }
 
-      return {
+      const successResponse = {
         status: response.status,
         data,
         headers: Object.fromEntries(response.headers.entries()),
         durationMs,
       };
+      await recordAttempt({
+        outcome: "success",
+        status: response.status,
+        responseBody: data,
+        durationMs,
+      });
+      return successResponse;
     } catch (error) {
       const durationMs = Date.now() - started;
       if (error instanceof ProviderAdapterError) {
+        if (!exchangeRecorded) {
+          await recordAttempt({
+            outcome:
+              error.category === "PROVIDER_TIMEOUT"
+                ? "timeout"
+                : error.category === "PROVIDER_UNKNOWN_ERROR"
+                  ? "network_error"
+                  : "http_error",
+            status: null,
+            responseBody: null,
+            durationMs,
+            errorCategory: error.category,
+            safeErrorMessage: error.safeMessage,
+          });
+        }
         throw error;
       }
       const isAbort = error instanceof Error && error.name === "AbortError";
@@ -153,6 +248,20 @@ export class ProviderHttpClient {
         },
         "provider_http_failed",
       );
+
+      if (!exchangeRecorded) {
+        await recordAttempt({
+          outcome: isAbort ? "timeout" : "network_error",
+          status: null,
+          responseBody: null,
+          durationMs,
+          errorCategory: isAbort ? "PROVIDER_TIMEOUT" : "PROVIDER_UNKNOWN_ERROR",
+          safeErrorMessage: isAbort
+            ? "Provider request timed out."
+            : "Provider request failed.",
+        });
+      }
+
       throw new ProviderAdapterError({
         providerCode: input.config.providerCode,
         operation: input.operation,
@@ -167,6 +276,37 @@ export class ProviderHttpClient {
       clearTimeout(timer);
     }
   }
+}
+
+async function recordShiprocketLiveLifecycleExchange(input: {
+  config: ProviderRuntimeConfig;
+  request: ProviderHttpRequest;
+  headers: Record<string, string>;
+  status: number | null;
+  requestBody: unknown;
+  responseBody: unknown;
+  durationMs: number;
+  outcome: ShiprocketLiveLifecycleHttpExchangeOutcome;
+  errorCategory?: string | null;
+  safeErrorMessage?: string | null;
+}): Promise<void> {
+  if (input.config.providerCode !== "SHIPROCKET") {
+    return;
+  }
+  const mod = await import("./shiprocket/shiprocket-live-lifecycle-artifacts.js");
+  await mod.maybeRecordShiprocketHttpExchange({
+    config: input.config,
+    request: input.request,
+    requestId: "lifecycle-artifact",
+    sanitizedHeaders: redactProviderHeaders(input.headers),
+    status: input.status,
+    requestBody: input.requestBody,
+    responseBody: input.responseBody,
+    durationMs: input.durationMs,
+    outcome: input.outcome,
+    errorCategory: input.errorCategory,
+    safeErrorMessage: input.safeErrorMessage,
+  });
 }
 
 export function redactProviderHeaders(

@@ -18,7 +18,21 @@ vi.mock("../src/config/env.js", async (importOriginal) => {
 
 import { ProviderAdapterError } from "../src/modules/provider/contracts/provider-error.js";
 import { ShiprocketAuthService } from "../src/modules/provider/adapters/shiprocket/shiprocket-auth.service.js";
+import { InMemoryShiprocketAuthRefreshLock } from "../src/modules/provider/adapters/shiprocket/shiprocket-auth-refresh.lock.js";
 import type { ProviderRuntimeConfig } from "../src/modules/provider/adapters/provider-config.types.js";
+import { InMemoryProviderAuthTokenRepository } from "./helpers/in-memory-provider-auth-token.repository.js";
+
+function createAuth(
+  http: InstanceType<
+    typeof import("../src/modules/provider/adapters/provider-http-client.js").ProviderHttpClient
+  >,
+) {
+  return new ShiprocketAuthService(
+    http,
+    new InMemoryProviderAuthTokenRepository(),
+    new InMemoryShiprocketAuthRefreshLock(),
+  );
+}
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures/shiprocket");
 
@@ -61,7 +75,7 @@ describe("ShiprocketAuthService", () => {
     const { ProviderHttpClient } =
       await import("../src/modules/provider/adapters/provider-http-client.js");
     const http = new ProviderHttpClient(fetchMock as typeof fetch);
-    const auth = new ShiprocketAuthService(http);
+    const auth = createAuth(http);
     auth.clearCacheForTests();
 
     const token = await auth.getBearerToken({
@@ -78,12 +92,41 @@ describe("ShiprocketAuthService", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("extracts top-level token from documented sandbox login shape", async () => {
+    const loginFixture = JSON.parse(
+      readFileSync(
+        join(fixtureDir, "auth-login-sandbox-documented-shape.json"),
+        "utf8",
+      ),
+    );
+
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(loginFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const { ProviderHttpClient } =
+      await import("../src/modules/provider/adapters/provider-http-client.js");
+    const http = new ProviderHttpClient(fetchMock as typeof fetch);
+    const auth = createAuth(http);
+    auth.clearCacheForTests();
+
+    const token = await auth.getBearerToken({
+      config: runtimeConfig,
+      requestId: "req-auth-documented-shape",
+    });
+    expect(token).toBe("fixture-sandbox-jwt-placeholder-not-a-real-token");
+  });
+
   it("maps 401 to PROVIDER_AUTHENTICATION_ERROR", async () => {
     const fetchMock = vi.fn(async () => new Response("Unauthorized", { status: 401 }));
     const { ProviderHttpClient } =
       await import("../src/modules/provider/adapters/provider-http-client.js");
     const http = new ProviderHttpClient(fetchMock as typeof fetch);
-    const auth = new ShiprocketAuthService(http);
+    const auth = createAuth(http);
     auth.clearCacheForTests();
 
     await expect(

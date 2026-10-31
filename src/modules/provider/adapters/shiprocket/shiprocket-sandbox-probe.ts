@@ -2,6 +2,7 @@ import { ProviderAdapterError } from "../../contracts/provider-error.js";
 import type { ProviderRuntimeConfig } from "../provider-config.types.js";
 import { ProviderHttpClient } from "../provider-http-client.js";
 import { ShiprocketAuthService } from "./shiprocket-auth.service.js";
+import { SHIPROCKET_JSON_READ_HEADERS } from "./shiprocket.constants.js";
 import { buildHyperlocalServiceabilityPath } from "./shiprocket-hyperlocal.query.js";
 
 export const SHIPROCKET_SANDBOX_HOST = "api-sandbox.shiprocket.in";
@@ -280,7 +281,10 @@ export async function runShiprocketSandboxServiceabilityProbe(
       request: {
         method: "GET",
         path,
-        headers: { authorization: `Bearer ${bearerToken}` },
+        headers: {
+          ...SHIPROCKET_JSON_READ_HEADERS,
+          authorization: `Bearer ${bearerToken}`,
+        },
         timeoutMs,
       },
       allowErrorResponseBody: true,

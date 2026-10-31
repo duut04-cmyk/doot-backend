@@ -8,15 +8,14 @@ import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
 import { InMemoryFeedbackRepository } from "./helpers/in-memory-feedback-repository.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
 import { InMemoryRatingRepository } from "./helpers/in-memory-rating-repository.js";
 import { InMemoryTrackingRepository } from "./helpers/in-memory-tracking-repository.js";
 import { storedDriverPhone } from "./helpers/phone-test-helpers.js";
-import {
-  seedDeliveredDelivery,
-} from "./helpers/operational-test-helpers.js";
+import { seedDeliveredDelivery } from "./helpers/operational-test-helpers.js";
 
 describe("DeliveryHistoryService", () => {
   let deliveryRepo: InMemoryDeliveryRepository;
@@ -53,6 +52,7 @@ describe("DeliveryHistoryService", () => {
       otpRepo,
       ratingRepo,
       feedbackRepo,
+      new InMemoryPaymentRepository(),
     );
     deliveryService = new DeliveryService(deliveryRepo);
   });

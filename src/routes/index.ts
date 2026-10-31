@@ -17,8 +17,14 @@ import { createProviderAdminRouter } from "../modules/provider/provider.routes.j
 import type { ProviderController } from "../modules/provider/provider.controller.js";
 import { createAdminOrchestrationListRouter } from "../modules/orchestration/orchestration-admin-list.routes.js";
 import { createAdminReportingRouter } from "../modules/admin-reporting/reporting.routes.js";
+import {
+  createAdminFinanceRouter,
+  createAdminPaymentsRouter,
+  createAdminRefundsRouter,
+} from "../modules/admin-finance/admin-finance.routes.js";
 import { createTestSmsRouter } from "../modules/test-sms/test-sms.routes.js";
 import { createPaymentWebhookRouter } from "../modules/payment/webhook/payment-webhook.routes.js";
+import { createProviderWebhookRouter } from "../modules/provider/webhook/provider-webhook.routes.js";
 
 export function createApiV1Router(options?: {
   authController?: AuthController;
@@ -42,6 +48,7 @@ export function createApiV1Router(options?: {
   router.use("/auth", createAuthRouter(options?.authController));
   router.use("/deliveries", createDeliveryRouter(options?.deliveryController));
   router.use("/payments/webhooks", createPaymentWebhookRouter());
+  router.use("/providers/webhooks", createProviderWebhookRouter());
 
   router.use(
     "/admin/customers",
@@ -70,6 +77,10 @@ export function createApiV1Router(options?: {
   router.use("/admin/orchestrations", createAdminOrchestrationListRouter());
 
   router.use("/admin/reporting", createAdminReportingRouter());
+
+  router.use("/admin/payments", createAdminPaymentsRouter());
+  router.use("/admin/refunds", createAdminRefundsRouter());
+  router.use("/admin/finance", createAdminFinanceRouter());
 
   if (env.NODE_ENV !== "production") {
     router.use("/test", createTestSmsRouter());

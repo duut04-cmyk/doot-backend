@@ -111,6 +111,12 @@ describe("OperationalRefreshService", () => {
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0]?.[0]?.operation).toBe("getTracking");
+    expect(executeMock.mock.calls[0]?.[0]?.payload).toEqual(
+      expect.objectContaining({
+        providerBookingId: expect.any(String),
+        deliveryReference: expect.any(String),
+      }),
+    );
     expect(result.pollSucceeded).toBe(true);
     expect(driverRepo.assignments).toHaveLength(1);
     expect(trackingRepo.points).toHaveLength(1);
@@ -329,5 +335,33 @@ describe("OperationalRefreshService", () => {
     ).rejects.toMatchObject({
       category: "PROVIDER_SERVICE_UNAVAILABLE",
     });
+  });
+
+  it("does not duplicate tracking points when poll returns the same providerEventId", async () => {
+    mockTracking({ status: "At hub", providerEventId: "evt-poll-dedup" });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      requestId: "req-poll-1",
+      source: "PROVIDER_POLL",
+      failureMode: "preserve",
+    });
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      requestId: "req-poll-2",
+      source: "PROVIDER_POLL",
+      failureMode: "preserve",
+    });
+
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    expect(trackingRepo.points).toHaveLength(1);
   });
 });

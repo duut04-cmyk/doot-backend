@@ -6,3 +6,5 @@ dist/
 coverage/
 *.log
 .DS_Store
+tmp/sandbox-runs/
+reports/shiprocket-live-lifecycle/

@@ -1,5 +1,18 @@
 import type { BookingRequest } from "../../contracts/booking.js";
-import { shiprocketOrderShowResponseSchema } from "./shiprocket.types.js";
+import {
+  parseShiprocketOrderShowDetails,
+  toCreatedOrderSnapshot,
+} from "./shiprocket-order-show.parse.js";
+
+/**
+ * Shiprocket identifier semantics (do not conflate):
+ * - **Channel order id** — Doot `deliveryReference` (sanitized) sent as adhoc `order_id` and stored in
+ *   `metadata.shiprocketChannelOrderId`. Used for orders/show during create idempotency (channel path only).
+ * - **Shiprocket order id** — numeric `data.id` from create/show; stored as `providerBookingId` when known
+ *   and duplicated in `metadata.shiprocketOrderId`.
+ * - **Shipment id** — `data.shipments[].id`; stored as `providerReference` and `metadata.shiprocketShipmentId`.
+ * - **AWB** — courier assignment code; stored in `metadata.shiprocketAwbCode` when validated.
+ */
 
 export function buildShiprocketExternalOrderId(request: {
   deliveryReference?: string;
@@ -19,32 +32,11 @@ export type ShiprocketCreatedOrderSnapshot = {
 export function parseShiprocketOrderShowBody(
   body: unknown,
 ): ShiprocketCreatedOrderSnapshot | null {
-  const parsed = shiprocketOrderShowResponseSchema.safeParse(body);
-  if (!parsed.success || !parsed.data.data) {
+  const details = parseShiprocketOrderShowDetails(body);
+  if (!details) {
     return null;
   }
-  const row = parsed.data.data as Record<string, unknown>;
-  const orderIdRaw = row.id ?? row.order_id;
-  if (orderIdRaw == null) {
-    return null;
-  }
-  const shipments = Array.isArray(row.shipments) ? row.shipments : [];
-  const firstShipment = shipments[0] as Record<string, unknown> | undefined;
-  const shipmentId =
-    firstShipment?.id != null ? String(firstShipment.id as string | number) : null;
-  if (!shipmentId) {
-    return null;
-  }
-  const awb = typeof row.awb_code === "string" ? row.awb_code : null;
-  const status =
-    typeof row.status === "string" && row.status.length > 0 ? row.status : "NEW";
-
-  return {
-    orderId: String(orderIdRaw),
-    shipmentId,
-    status,
-    awbCode: awb,
-  };
+  return toCreatedOrderSnapshot(details);
 }
 
 export function bookingRequestChannelOrderId(request: BookingRequest): string {

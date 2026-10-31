@@ -99,7 +99,53 @@ describe("Shiprocket booking lifecycle", () => {
     ).toBe(101);
   });
 
-  it("creates adhoc order and assigns AWB", async () => {
+  it("does not BOOKED when create response includes invalid placeholder AWB", async () => {
+    const createFixture = {
+      ...JSON.parse(
+        readFileSync(join(fixtureDir, "create-adhoc-success.json"), "utf8"),
+      ),
+      awb_code: "NA",
+    };
+    const assignFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "assign-awb-success.json"), "utf8"),
+    );
+
+    const auth = {
+      getBearerToken: vi.fn(async () => "token-redacted"),
+    } as unknown as ShiprocketAuthService;
+
+    const http = {
+      request: vi.fn(async (_input: { request: { path: string; method: string } }) => {
+        if (_input.request.path.includes("orders/show")) {
+          return { status: 404, data: {}, headers: {}, durationMs: 1 };
+        }
+        if (_input.request.path.includes("create/adhoc")) {
+          return { status: 200, data: createFixture, headers: {}, durationMs: 1 };
+        }
+        if (_input.request.path.includes("assign/awb")) {
+          return { status: 200, data: assignFixture, headers: {}, durationMs: 1 };
+        }
+        return { status: 404, data: {}, headers: {}, durationMs: 1 };
+      }),
+    } as unknown as ProviderHttpClient;
+
+    const booking = new ShiprocketBookingService(http, auth);
+    const result = await booking.createBooking(bookingRequest, {
+      requestId: "req-invalid-create-awb",
+      config: runtimeConfig,
+    });
+
+    expect(result.outcome).not.toBe("BOOKED");
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          path: expect.stringContaining("assign/awb"),
+        }),
+      }),
+    );
+  });
+
+  it("returns UNKNOWN when assign acknowledges processing without AWB", async () => {
     const createFixture = JSON.parse(
       readFileSync(join(fixtureDir, "create-adhoc-success.json"), "utf8"),
     );
@@ -113,6 +159,12 @@ describe("Shiprocket booking lifecycle", () => {
 
     const http = {
       request: vi.fn(async (_input: { request: { path: string; method: string } }) => {
+        if (
+          _input.request.method === "GET" &&
+          _input.request.path.includes("orders/show")
+        ) {
+          return { status: 404, data: {}, headers: {}, durationMs: 1 };
+        }
         if (
           _input.request.method === "POST" &&
           _input.request.path.includes("create/adhoc")
@@ -135,10 +187,121 @@ describe("Shiprocket booking lifecycle", () => {
       config: runtimeConfig,
     });
 
-    expect(result.outcome).toBe("BOOKED");
+    expect(result.outcome).toBe("UNKNOWN");
     expect(result.providerBookingId).toBe("16161616");
-    expect(result.providerReference).toBe("15151515");
-    expect(http.request).toHaveBeenCalledTimes(3);
+    expect(result.metadata?.shiprocketShipmentId).toBe("15151515");
+    expect(result.metadata?.shiprocketAwbCode).toBeUndefined();
+    expect(http.request).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns BOOKED when order show confirms AWB after async assign", async () => {
+    const createFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "create-adhoc-success.json"), "utf8"),
+    );
+    const assignFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "assign-awb-success.json"), "utf8"),
+    );
+    const showFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "order-show-success.json"), "utf8"),
+    );
+
+    const auth = {
+      getBearerToken: vi.fn(async () => "token-redacted"),
+    } as unknown as ShiprocketAuthService;
+
+    let showCalls = 0;
+    const http = {
+      request: vi.fn(async (_input: { request: { path: string; method: string } }) => {
+        if (
+          _input.request.method === "GET" &&
+          _input.request.path.includes("orders/show")
+        ) {
+          showCalls += 1;
+          if (showCalls === 1) {
+            return { status: 404, data: {}, headers: {}, durationMs: 1 };
+          }
+          return { status: 200, data: showFixture, headers: {}, durationMs: 1 };
+        }
+        if (
+          _input.request.method === "POST" &&
+          _input.request.path.includes("create/adhoc")
+        ) {
+          return { status: 200, data: createFixture, headers: {}, durationMs: 1 };
+        }
+        if (
+          _input.request.method === "POST" &&
+          _input.request.path.includes("assign/awb")
+        ) {
+          return { status: 200, data: assignFixture, headers: {}, durationMs: 1 };
+        }
+        return { status: 404, data: {}, headers: {}, durationMs: 1 };
+      }),
+    } as unknown as ProviderHttpClient;
+
+    const booking = new ShiprocketBookingService(http, auth);
+    const result = await booking.createBooking(bookingRequest, {
+      requestId: "req-book-awb-show",
+      config: runtimeConfig,
+    });
+
+    expect(result.outcome).toBe("BOOKED");
+    expect(result.metadata?.shiprocketAwbCode).toBe("SR123456789IN");
+    expect(
+      http.request.mock.calls.filter(
+        (call) =>
+          (call[0] as { request: { method: string; path: string } }).request.method ===
+            "POST" &&
+          (call[0] as { request: { path: string } }).request.path.includes(
+            "create/adhoc",
+          ),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("returns BOOKED when create response already includes AWB", async () => {
+    const createFixture = {
+      ...JSON.parse(
+        readFileSync(join(fixtureDir, "create-adhoc-success.json"), "utf8"),
+      ),
+      awb_code: "SR-CREATE-AWB",
+    };
+
+    const auth = {
+      getBearerToken: vi.fn(async () => "token-redacted"),
+    } as unknown as ShiprocketAuthService;
+
+    const http = {
+      request: vi.fn(async (_input: { request: { path: string; method: string } }) => {
+        if (
+          _input.request.method === "GET" &&
+          _input.request.path.includes("orders/show")
+        ) {
+          return { status: 404, data: {}, headers: {}, durationMs: 1 };
+        }
+        if (
+          _input.request.method === "POST" &&
+          _input.request.path.includes("create/adhoc")
+        ) {
+          return { status: 200, data: createFixture, headers: {}, durationMs: 1 };
+        }
+        if (
+          _input.request.method === "POST" &&
+          _input.request.path.includes("assign/awb")
+        ) {
+          throw new Error("assign must not run when AWB is already on create");
+        }
+        return { status: 404, data: {}, headers: {}, durationMs: 1 };
+      }),
+    } as unknown as ProviderHttpClient;
+
+    const booking = new ShiprocketBookingService(http, auth);
+    const result = await booking.createBooking(bookingRequest, {
+      requestId: "req-book-awb-create",
+      config: runtimeConfig,
+    });
+
+    expect(result.outcome).toBe("BOOKED");
+    expect(result.metadata?.shiprocketAwbCode).toBe("SR-CREATE-AWB");
   });
 
   it("uses a stable Shiprocket order_id derived from delivery reference", async () => {
@@ -391,28 +554,6 @@ describe("Shiprocket booking lifecycle", () => {
     expect(result.metadata?.shiprocketChannelOrderId).toBe(
       bookingRequest.deliveryReference,
     );
-  });
-
-  it("cancels a numeric Shiprocket order id", async () => {
-    const auth = {
-      getBearerToken: vi.fn(async () => "token-redacted"),
-    } as unknown as ShiprocketAuthService;
-    const http = {
-      request: vi.fn(async () => ({
-        status: 204,
-        data: {},
-        headers: {},
-        durationMs: 1,
-      })),
-    } as unknown as ProviderHttpClient;
-
-    const lifecycle = new ShiprocketLifecycleService(http, auth);
-    const result = await lifecycle.cancelBooking(
-      { providerBookingId: "16161616", reason: "customer_request" },
-      { requestId: "req-cancel-1", config: runtimeConfig },
-    );
-
-    expect(result.outcome).toBe("CANCELLED");
   });
 
   it("loads tracking via shipment id when AWB is unavailable", async () => {

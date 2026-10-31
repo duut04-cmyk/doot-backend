@@ -27,6 +27,8 @@
     "cert:payment-phase1": "tsx scripts/payment-domain-phase1-verification.ts",
     "cert:cashfree-sandbox": "tsx scripts/cashfree-sandbox-certification.ts",
     "probe:shiprocket-sandbox": "tsx scripts/shiprocket-sandbox-serviceability-probe.ts",
+    "verify:shiprocket-sandbox-cancel": "tsx scripts/shiprocket-sandbox-cancel-verify.ts",
+    "verify:shiprocket-live-lifecycle": "tsx scripts/shiprocket-live-lifecycle-runner.ts",
     "smoke:twilio-trial-template": "tsx scripts/twilio-trial-template-smoke.ts",
     "cert:browser-gate": "tsx --tsconfig ../customer-platform/tsconfig.json scripts/customer-browser-gate-verification.ts"
   },
