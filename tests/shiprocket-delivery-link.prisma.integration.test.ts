@@ -5,10 +5,12 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertPostgresConcurrencyTestDatabaseUrl } from "./helpers/postgres-concurrency-test-database.js";
+import { tryPostgresConcurrencyTestDatabaseUrl } from "./helpers/postgres-concurrency-test-database.js";
 
 const rawTestDatabaseUrl = process.env.TEST_DATABASE_URL;
-const describeIntegration = rawTestDatabaseUrl ? describe : describe.skip;
+const validatedTestDatabaseUrl =
+  tryPostgresConcurrencyTestDatabaseUrl(rawTestDatabaseUrl);
+const describeIntegration = validatedTestDatabaseUrl ? describe : describe.skip;
 
 describeIntegration("PrismaProviderDeliveryLinkResolver (AWB JSON path)", () => {
   let prisma: PrismaClient;
@@ -19,7 +21,7 @@ describeIntegration("PrismaProviderDeliveryLinkResolver (AWB JSON path)", () => 
   const awb = "SR987654321IN";
 
   beforeAll(async () => {
-    const url = assertPostgresConcurrencyTestDatabaseUrl(rawTestDatabaseUrl);
+    const url = validatedTestDatabaseUrl!;
     process.env.DATABASE_URL = url;
     process.env.DIRECT_URL = url;
 

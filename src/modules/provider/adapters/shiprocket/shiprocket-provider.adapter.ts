@@ -19,6 +19,7 @@ import type {
   ProviderAdapter,
   ProviderAdapterMetadata,
   ProviderHyperlocalRatesAdapter,
+  ProviderQuoteProbeResult,
 } from "../provider-adapter.types.js";
 import {
   ShiprocketAuthService,
@@ -74,6 +75,32 @@ function resolveSupportedCapabilities(): ProviderCapability[] {
   return capabilities;
 }
 
+function quoteRequestToServiceability(request: QuoteRequest): ServiceabilityRequest {
+  return {
+    deliveryId: request.deliveryId,
+    deliveryReference: request.deliveryReference,
+    pickup: request.pickup,
+    drop: request.drop,
+    package: request.package,
+    schedule: request.schedule,
+    requirements: request.requirements,
+    specialInstructions: request.specialInstructions,
+  };
+}
+
+function emptyHyperlocalQuote(): NormalizedQuote {
+  return {
+    available: false,
+    amount: null,
+    providerQuoteId: null,
+    estimatedDeliveryAt: null,
+    estimatedDeliveryMinutes: null,
+    breakdown: null,
+    quotedAt: new Date().toISOString(),
+    reason: "No hyperlocal rates returned.",
+  };
+}
+
 function unsupported(operation: AdapterOperation): never {
   throw new ProviderAdapterError({
     providerCode: SHIPROCKET_PROVIDER_CODE,
@@ -104,6 +131,28 @@ export class ShiprocketProviderAdapter implements ProviderHyperlocalRatesAdapter
     return resolveSupportedOperations().includes(operation);
   }
 
+  async probeQuote(
+    request: QuoteRequest,
+    ctx: AdapterExecutionContext,
+  ): Promise<Omit<ProviderQuoteProbeResult, "providerCode">> {
+    const hyperlocal = await this.fetchHyperlocalRates(
+      quoteRequestToServiceability(request),
+      ctx,
+    );
+    const selectedCandidateIndex = 0;
+    const first = hyperlocal.candidates[selectedCandidateIndex];
+    return {
+      quote: first?.quote ?? emptyHyperlocalQuote(),
+      candidates: hyperlocal.candidates,
+      selectedCandidateIndex,
+      serviceability: hyperlocal.serviceability,
+      availability: hyperlocal.availability,
+      warnings: hyperlocal.warnings,
+      providerMetadata: hyperlocal.providerMetadata,
+      cancellationPolicy: hyperlocal.cancellationPolicy,
+    };
+  }
+
   async fetchHyperlocalRates(
     request: ServiceabilityRequest,
     ctx: AdapterExecutionContext,
@@ -118,6 +167,12 @@ export class ShiprocketProviderAdapter implements ProviderHyperlocalRatesAdapter
         shiprocketHyperlocalRates: result.shiprocketHyperlocalRates,
         shiprocketPickupPostcode: result.pickupPostcode,
         shiprocketDeliveryPostcode: result.deliveryPostcode,
+        ...(result.pickupCity ? { shiprocketPickupCity: result.pickupCity } : {}),
+        ...(result.pickupState ? { shiprocketPickupState: result.pickupState } : {}),
+        ...(result.deliveryCity ? { shiprocketDeliveryCity: result.deliveryCity } : {}),
+        ...(result.deliveryState
+          ? { shiprocketDeliveryState: result.deliveryState }
+          : {}),
       },
       cancellationPolicy: shiprocketPhase1CancellationPolicy(),
     };
@@ -205,31 +260,8 @@ export class ShiprocketProviderAdapter implements ProviderHyperlocalRatesAdapter
     request: QuoteRequest,
     ctx: AdapterExecutionContext,
   ): Promise<NormalizedQuote> {
-    const serviceabilityRequest: ServiceabilityRequest = {
-      deliveryId: request.deliveryId,
-      deliveryReference: request.deliveryReference,
-      pickup: request.pickup,
-      drop: request.drop,
-      package: request.package,
-      schedule: request.schedule,
-      requirements: request.requirements,
-      specialInstructions: request.specialInstructions,
-    };
-    const result = await this.fetchHyperlocalRates(serviceabilityRequest, ctx);
-    const first = result.candidates[0];
-    if (!first) {
-      return {
-        available: false,
-        amount: null,
-        providerQuoteId: null,
-        estimatedDeliveryAt: null,
-        estimatedDeliveryMinutes: null,
-        breakdown: null,
-        quotedAt: new Date().toISOString(),
-        reason: "No hyperlocal rates returned.",
-      };
-    }
-    return first.quote;
+    const probe = await this.probeQuote(request, ctx);
+    return probe.quote;
   }
 }
 

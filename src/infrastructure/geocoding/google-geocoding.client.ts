@@ -6,6 +6,8 @@ const INDIAN_POSTAL_CODE = /^\d{6}$/;
 export type ReverseGeocodeResult = {
   postalCode: string;
   formattedAddress: string | null;
+  city: string | null;
+  state: string | null;
 };
 
 type GoogleGeocodeResponse = {
@@ -39,9 +41,21 @@ export function parseIndianPostalCodeFromGeocodeResponse(
     }
     const candidate = postalComponent.long_name.replace(/\s/g, "");
     if (INDIAN_POSTAL_CODE.test(candidate)) {
+      const components = result.address_components ?? [];
+      const findType = (type: string) =>
+        components
+          .find((component) => component.types.includes(type))
+          ?.long_name?.trim() ?? null;
+      const city =
+        findType("locality") ??
+        findType("administrative_area_level_2") ??
+        findType("sublocality");
+      const state = findType("administrative_area_level_1");
       return {
         postalCode: candidate,
         formattedAddress: result.formatted_address ?? null,
+        city: city && city.length > 0 ? city : null,
+        state: state && state.length > 0 ? state : null,
       };
     }
   }

@@ -232,7 +232,11 @@ describe("ShiprocketLifecycleService", () => {
 
   it("maps HTTP 401 on tracking to authentication error", async () => {
     const auth = {
-      getBearerToken: vi.fn(async () => "token-redacted"),
+      getBearerToken: vi
+        .fn()
+        .mockResolvedValueOnce("token-redacted")
+        .mockResolvedValueOnce("token-redacted-after-refresh"),
+      invalidateMemoryCache: vi.fn(),
     } as unknown as ShiprocketAuthService;
     const http = {
       request: vi.fn(async () => ({

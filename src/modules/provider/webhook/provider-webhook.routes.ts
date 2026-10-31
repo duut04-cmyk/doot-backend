@@ -9,5 +9,7 @@ export function createProviderWebhookRouter(
 ): Router {
   const router = Router();
   router.post("/shiprocket", controller.handleShiprocket);
+  /** Neutral path alias (Shiprocket dashboard discourages "shiprocket" in URLs). */
+  router.post("/tracking", controller.handleShiprocket);
   return router;
 }

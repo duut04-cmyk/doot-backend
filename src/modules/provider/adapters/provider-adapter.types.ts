@@ -130,9 +130,19 @@ export interface ProviderAdapter {
   ): Promise<AdapterOperationOutput<T>>;
 }
 
+export type HyperlocalRateCandidate = {
+  quote: NormalizedQuote;
+  providerMetadata: Record<string, unknown>;
+};
+
 export type ProviderQuoteProbeResult = {
   providerCode: string;
+  /** Primary quote (first hyperlocal candidate when multiple exist). */
   quote: NormalizedQuote;
+  /** All hyperlocal candidates; same order as Shiprocket `data[]` when parsed. */
+  candidates: HyperlocalRateCandidate[];
+  /** Index into `candidates` used for `quote`. */
+  selectedCandidateIndex: number;
   serviceability: NormalizedServiceabilityResult;
   availability: AvailabilityResult;
   warnings: string[];
@@ -144,7 +154,7 @@ export interface ProviderQuoteProbeAdapter extends ProviderAdapter {
   probeQuote(
     input: QuoteRequest,
     ctx: AdapterExecutionContext,
-  ): Promise<ProviderQuoteProbeResult>;
+  ): Promise<Omit<ProviderQuoteProbeResult, "providerCode">>;
 }
 
 export function isQuoteProbeAdapter(
@@ -152,11 +162,6 @@ export function isQuoteProbeAdapter(
 ): adapter is ProviderQuoteProbeAdapter {
   return typeof (adapter as ProviderQuoteProbeAdapter).probeQuote === "function";
 }
-
-export type HyperlocalRateCandidate = {
-  quote: NormalizedQuote;
-  providerMetadata: Record<string, unknown>;
-};
 
 export type HyperlocalRatesFetchResult = {
   serviceability: NormalizedServiceabilityResult;

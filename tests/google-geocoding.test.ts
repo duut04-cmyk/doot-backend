@@ -35,6 +35,8 @@ describe("GoogleGeocodingClient", () => {
     );
     const result = parseIndianPostalCodeFromGeocodeResponse(fixture);
     expect(result.postalCode).toBe("110001");
+    expect(result.city).toBe("New Delhi");
+    expect(result.state).toBeNull();
   });
 
   it("requires coordinates before geocoding", () => {
@@ -57,5 +59,7 @@ describe("GoogleGeocodingClient", () => {
     const client = new GoogleGeocodingClient(fetchMock as typeof fetch);
     const result = await client.reverseGeocode(28.6315, 77.2167);
     expect(result.postalCode).toBe("110001");
+    expect(result.city).toBe("New Delhi");
+    expect(result.state).toBeNull();
   });
 });

@@ -30,19 +30,43 @@ describe("parseShiprocketHyperlocalServiceability", () => {
     expect(parsed.candidates).toHaveLength(0);
   });
 
-  it("returns parse failure when status is false", () => {
+  it("returns valid zero candidates when status is false (no serviceability)", () => {
     const parsed = parseShiprocketHyperlocalServiceability({
       status: false,
-      message: "Not serviceable",
-      data: [],
+      message: "No serviceability found",
     });
+    expect(parsed.success).toBe(true);
+    expect(parsed.malformed).toBe(false);
+    expect(parsed.candidates).toHaveLength(0);
+    expect(parsed.providerMessage).toBe("No serviceability found");
+  });
+
+  it("returns malformed for empty HTTP 200 body object", () => {
+    const parsed = parseShiprocketHyperlocalServiceability({});
     expect(parsed.success).toBe(false);
+    expect(parsed.malformed).toBe(true);
     expect(parsed.candidates).toHaveLength(0);
   });
 
-  it("returns parse failure for empty HTTP 200 body object", () => {
-    const parsed = parseShiprocketHyperlocalServiceability({});
-    expect(parsed.success).toBe(false);
-    expect(parsed.candidates).toHaveLength(0);
+  it("parses three distinct courier candidates", () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        join(fixtureDir, "hyperlocal-serviceability-three-couriers.json"),
+        "utf8",
+      ),
+    );
+    const parsed = parseShiprocketHyperlocalServiceability(fixture);
+    expect(parsed.success).toBe(true);
+    expect(parsed.candidates).toHaveLength(3);
+    expect(parsed.candidates.map((c) => c.courierName)).toEqual([
+      "Courier Alpha",
+      "Courier Beta",
+      "Courier Gamma",
+    ]);
+    expect(parsed.candidates.map((c) => c.providerQuoteId)).toEqual([
+      "hl-rate-201",
+      "hl-rate-202",
+      "hl-rate-203",
+    ]);
   });
 });

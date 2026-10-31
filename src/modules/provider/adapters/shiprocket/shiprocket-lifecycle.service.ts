@@ -18,6 +18,7 @@ import {
   ShiprocketAuthService,
   shiprocketAuthService,
 } from "./shiprocket-auth.service.js";
+import { shiprocketAuthenticatedReadRequest } from "./shiprocket-authenticated-http.util.js";
 import {
   isShiprocketCancelPreflightIndeterminate,
   isShiprocketOrderAlreadyCancelledAtProvider,
@@ -290,24 +291,19 @@ export class ShiprocketLifecycleService {
     ctx: AdapterExecutionContext,
     operation: "getBooking" | "cancelBooking",
   ): Promise<ShiprocketOrderShowDetails> {
-    const token = await this.auth.getBearerToken({
+    const response = await shiprocketAuthenticatedReadRequest({
+      http: this.http,
+      auth: this.auth,
       config: ctx.config,
       requestId: ctx.requestId,
-    });
-
-    const response = await this.http.request({
-      config: ctx.config,
       operation,
-      requestId: ctx.requestId,
+      resourceLabel: "order",
+      allowErrorResponseBody: true,
       request: {
         method: "GET",
         path: `${SHIPROCKET_ORDER_SHOW_PATH_PREFIX}${encodeURIComponent(providerBookingId)}`,
-        headers: {
-          ...SHIPROCKET_JSON_READ_HEADERS,
-          authorization: `Bearer ${token}`,
-        },
+        headers: SHIPROCKET_JSON_READ_HEADERS,
       },
-      allowErrorResponseBody: true,
     });
 
     assertShiprocketReadHttpSuccess({
@@ -339,11 +335,6 @@ export class ShiprocketLifecycleService {
     options?: { awbCode?: string | null; shipmentId?: string | null },
   ): Promise<NormalizedTrackingResult> {
     assertLifecycleEnabled("getTracking");
-    const token = await this.auth.getBearerToken({
-      config: ctx.config,
-      requestId: ctx.requestId,
-    });
-
     let awbCode = isValidShiprocketAwbCode(options?.awbCode)
       ? options.awbCode.trim()
       : null;
@@ -384,19 +375,19 @@ export class ShiprocketLifecycleService {
       });
     }
 
-    const response = await this.http.request({
+    const response = await shiprocketAuthenticatedReadRequest({
+      http: this.http,
+      auth: this.auth,
       config: ctx.config,
-      operation: "getTracking",
       requestId: ctx.requestId,
+      operation: "getTracking",
+      resourceLabel: "tracking",
+      allowErrorResponseBody: true,
       request: {
         method: "GET",
         path,
-        headers: {
-          ...SHIPROCKET_JSON_READ_HEADERS,
-          authorization: `Bearer ${token}`,
-        },
+        headers: SHIPROCKET_JSON_READ_HEADERS,
       },
-      allowErrorResponseBody: true,
     });
 
     assertShiprocketReadHttpSuccess({

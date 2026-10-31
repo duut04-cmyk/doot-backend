@@ -336,4 +336,32 @@ describe("OperationalRefreshService", () => {
       category: "PROVIDER_SERVICE_UNAVAILABLE",
     });
   });
+
+  it("does not duplicate tracking points when poll returns the same providerEventId", async () => {
+    mockTracking({ status: "At hub", providerEventId: "evt-poll-dedup" });
+
+    const seeded = await seedBookedDelivery({
+      deliveryRepo,
+      orchestrationRepo,
+      providerRepo,
+      bookingRepo,
+      customerId,
+    });
+
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      requestId: "req-poll-1",
+      source: "PROVIDER_POLL",
+      failureMode: "preserve",
+    });
+    await service.refreshFromProvider({
+      deliveryId: seeded.deliveryId,
+      requestId: "req-poll-2",
+      source: "PROVIDER_POLL",
+      failureMode: "preserve",
+    });
+
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    expect(trackingRepo.points).toHaveLength(1);
+  });
 });

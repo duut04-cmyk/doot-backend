@@ -47,28 +47,73 @@ function buildQuoteId(entry: Record<string, unknown>, index: number): string {
   return `${String(name)}-${index}`;
 }
 
-export function parseShiprocketHyperlocalServiceability(body: unknown): {
-  success: boolean;
-  candidates: ParsedHyperlocalRateCandidate[];
-  rawEntries: unknown[];
-} {
-  const parsed = shiprocketHyperlocalServiceabilityResponseSchema.safeParse(body);
-  if (!parsed.success) {
-    return { success: false, candidates: [], rawEntries: [] };
-  }
-
-  const status = parsed.data.status;
-  const success =
+function isExplicitStatusTrue(status: unknown): boolean {
+  return (
     status === true ||
     status === 1 ||
     status === "1" ||
-    String(status).toLowerCase() === "true";
+    String(status).toLowerCase() === "true"
+  );
+}
 
-  if (!success) {
-    return { success: false, candidates: [], rawEntries: parsed.data.data ?? [] };
+function isExplicitStatusFalse(status: unknown): boolean {
+  return (
+    status === false ||
+    status === 0 ||
+    status === "0" ||
+    String(status).toLowerCase() === "false"
+  );
+}
+
+export type ShiprocketHyperlocalParseResult = {
+  /** Response envelope was understood (includes valid zero-candidate results). */
+  success: boolean;
+  /** Body could not be interpreted as a serviceability response. */
+  malformed: boolean;
+  candidates: ParsedHyperlocalRateCandidate[];
+  rawEntries: unknown[];
+  providerMessage: string | null;
+};
+
+function malformedResult(): ShiprocketHyperlocalParseResult {
+  return {
+    success: false,
+    malformed: true,
+    candidates: [],
+    rawEntries: [],
+    providerMessage: null,
+  };
+}
+
+export function parseShiprocketHyperlocalServiceability(
+  body: unknown,
+): ShiprocketHyperlocalParseResult {
+  const parsed = shiprocketHyperlocalServiceabilityResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return malformedResult();
   }
 
-  const entries = parsed.data.data ?? [];
+  const { status, message, data } = parsed.data;
+
+  if (isExplicitStatusFalse(status)) {
+    return {
+      success: true,
+      malformed: false,
+      candidates: [],
+      rawEntries: data ?? [],
+      providerMessage: typeof message === "string" ? message : null,
+    };
+  }
+
+  if (!isExplicitStatusTrue(status)) {
+    if (Array.isArray(data)) {
+      // Some responses may omit status but include data[].
+    } else {
+      return malformedResult();
+    }
+  }
+
+  const entries = data ?? [];
   const candidates: ParsedHyperlocalRateCandidate[] = [];
 
   entries.forEach((entry, index) => {
@@ -86,5 +131,11 @@ export function parseShiprocketHyperlocalServiceability(body: unknown): {
     });
   });
 
-  return { success: true, candidates, rawEntries: entries };
+  return {
+    success: true,
+    malformed: false,
+    candidates,
+    rawEntries: entries,
+    providerMessage: typeof message === "string" ? message : null,
+  };
 }

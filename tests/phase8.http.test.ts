@@ -18,6 +18,7 @@ import { InMemoryCancellationRepository } from "./helpers/in-memory-cancellation
 import { InMemoryDeliveryRepository } from "./helpers/in-memory-delivery-repository.js";
 import { InMemoryDriverRepository } from "./helpers/in-memory-driver-repository.js";
 import { InMemoryFeedbackRepository } from "./helpers/in-memory-feedback-repository.js";
+import { InMemoryPaymentRepository } from "./helpers/in-memory-payment-repository.js";
 import { InMemoryOrchestrationRepository } from "./helpers/in-memory-orchestration-repository.js";
 import { InMemoryOtpRepository } from "./helpers/in-memory-otp-repository.js";
 import { InMemoryProviderRepository } from "./helpers/in-memory-provider-repository.js";
@@ -92,6 +93,7 @@ describe("Phase 8 HTTP", () => {
       new InMemoryOtpRepository(),
       ratingRepo,
       feedbackRepo,
+      new InMemoryPaymentRepository(),
     );
     const deliveryController = new DeliveryController(
       new DeliveryService(deliveryRepo),
@@ -125,6 +127,7 @@ describe("Phase 8 HTTP", () => {
       new InMemoryOtpRepository(),
       ratingRepo,
       feedbackRepo,
+      new InMemoryPaymentRepository(),
     );
     const deliveryController = new DeliveryController(
       new DeliveryService(deliveryRepo),

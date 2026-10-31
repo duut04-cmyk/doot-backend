@@ -11,21 +11,23 @@ import {
   SHIPROCKET_CREATE_ADHOC_ORDER_PATH,
   SHIPROCKET_ORDER_SHOW_PATH_PREFIX,
 } from "./shiprocket.constants.js";
-import {
-  digitsOnlyPhone,
-  requireShiprocketCourierId,
-} from "./shiprocket-metadata.util.js";
+import { requireShiprocketCourierId } from "./shiprocket-metadata.util.js";
 import { resolveOrderShowProbeResult } from "./shiprocket-order-show.probe.js";
 import { confirmedShiprocketAwbCode } from "./shiprocket-order-show.parse.js";
 import {
   bookingRequestChannelOrderId,
-  buildShiprocketExternalOrderId,
   type ShiprocketCreatedOrderSnapshot,
 } from "./shiprocket-order.util.js";
 import {
   ShiprocketAuthService,
   shiprocketAuthService,
 } from "./shiprocket-auth.service.js";
+import { shiprocketAuthenticatedReadRequest } from "./shiprocket-authenticated-http.util.js";
+import { SHIPROCKET_JSON_READ_HEADERS } from "./shiprocket.constants.js";
+import {
+  buildShiprocketAdhocOrderPayload,
+  isStrictLiveShiprocketBooking,
+} from "./shiprocket-booking-payload.js";
 import {
   extractShiprocketAssignAwb,
   shiprocketAssignAwbResponseSchema,
@@ -49,121 +51,6 @@ function assertBookingEnabled(): void {
       code: ErrorCodes.PROVIDER_NOT_READY,
     });
   }
-}
-
-function resolveSubTotalInr(request: BookingRequest): number {
-  const rate = request.providerMetadata?.shiprocketHyperlocalRate;
-  if (rate && typeof rate === "object") {
-    const row = rate as Record<string, unknown>;
-    const raw = row.rates ?? row.rate;
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-      return Math.max(1, Math.round(raw));
-    }
-    if (typeof raw === "string") {
-      const parsed = Number.parseFloat(raw);
-      if (Number.isFinite(parsed)) {
-        return Math.max(1, Math.round(parsed));
-      }
-    }
-  }
-  return Math.max(1, Math.round(request.package.weightKg * 100));
-}
-
-function dimensionCm(value: number | null | undefined, fallback: number): number {
-  return value != null && value > 0 ? value : fallback;
-}
-
-function parsePostcodeFromMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-  fallback: number,
-): number {
-  const value = metadata?.[key];
-  if (typeof value === "string" && /^\d{6}$/.test(value)) {
-    return Number.parseInt(value, 10);
-  }
-  return fallback;
-}
-
-function buildAdhocOrderPayload(request: BookingRequest): Record<string, unknown> {
-  const pickupLocation = env.SHIPROCKET_PICKUP_LOCATION!;
-  const orderId = buildShiprocketExternalOrderId(request);
-  const billingPincode = parsePostcodeFromMetadata(
-    request.providerMetadata,
-    "shiprocketPickupPostcode",
-    110001,
-  );
-  const shippingPincode = parsePostcodeFromMetadata(
-    request.providerMetadata,
-    "shiprocketDeliveryPostcode",
-    110001,
-  );
-  const now = new Date();
-  const orderDate = `${now.toISOString().slice(0, 10)} ${now.toISOString().slice(11, 16)}`;
-  const subTotal = resolveSubTotalInr(request);
-
-  const dropLat = request.drop.latitude;
-  const dropLng = request.drop.longitude;
-  if (dropLat == null || dropLng == null) {
-    throw new ProviderAdapterError({
-      providerCode: "SHIPROCKET",
-      operation: "createBooking",
-      category: "PROVIDER_VALIDATION_ERROR",
-      safeMessage: "Drop coordinates are required for Shiprocket hyperlocal booking.",
-      retryable: false,
-    });
-  }
-
-  return {
-    order_id: orderId,
-    order_date: orderDate,
-    pickup_location: pickupLocation,
-    billing_customer_name: request.pickup.contactName.slice(0, 50),
-    billing_address: request.pickup.addressText.slice(0, 200),
-    billing_city: "NA",
-    billing_pincode: billingPincode,
-    billing_state: "NA",
-    billing_country: "India",
-    billing_email: "booking@doot.local",
-    billing_phone: Number.parseInt(
-      digitsOnlyPhone(
-        request.pickup.contactPhoneCountryCode,
-        request.pickup.contactPhoneNumber,
-      ),
-      10,
-    ),
-    shipping_is_billing: false,
-    shipping_customer_name: request.drop.contactName.slice(0, 50),
-    shipping_address: request.drop.addressText.slice(0, 200),
-    shipping_city: "NA",
-    shipping_pincode: shippingPincode,
-    shipping_state: "NA",
-    shipping_country: "India",
-    shipping_phone: Number.parseInt(
-      digitsOnlyPhone(
-        request.drop.contactPhoneCountryCode,
-        request.drop.contactPhoneNumber,
-      ),
-      10,
-    ),
-    latitude: dropLat,
-    longitude: dropLng,
-    payment_method: "Prepaid",
-    shipping_method: "HL",
-    sub_total: subTotal,
-    length: dimensionCm(request.package.lengthCm, 10),
-    breadth: dimensionCm(request.package.widthCm, 10),
-    height: dimensionCm(request.package.heightCm, 10),
-    weight: request.package.weightKg,
-    order_items: [
-      {
-        name: request.package.description ?? request.package.packageType,
-        sku: `DOOT-${request.package.packageType}`,
-        units: request.package.quantity,
-        selling_price: subTotal,
-      },
-    ],
-  };
 }
 
 function parseCreateOrderResponse(body: unknown): ShiprocketCreatedOrderSnapshot {
@@ -294,8 +181,7 @@ export class ShiprocketBookingService {
       requestId: ctx.requestId,
     });
 
-    let created =
-      (await this.fetchExistingOrderSnapshot(channelOrderId, token, ctx)) ?? null;
+    let created = (await this.fetchExistingOrderSnapshot(channelOrderId, ctx)) ?? null;
 
     if (!created) {
       created = await this.createAdhocOrder(request, token, ctx, channelOrderId);
@@ -313,19 +199,21 @@ export class ShiprocketBookingService {
 
   private async fetchExistingOrderSnapshot(
     lookupId: string,
-    token: string,
     ctx: AdapterExecutionContext,
   ): Promise<ShiprocketCreatedOrderSnapshot | null> {
-    const response = await this.http.request({
+    const response = await shiprocketAuthenticatedReadRequest({
+      http: this.http,
+      auth: this.auth,
       config: ctx.config,
-      operation: "getBooking",
       requestId: ctx.requestId,
+      operation: "getBooking",
+      resourceLabel: "order",
+      allowErrorResponseBody: true,
       request: {
         method: "GET",
         path: `${SHIPROCKET_ORDER_SHOW_PATH_PREFIX}${encodeURIComponent(lookupId)}`,
-        headers: { authorization: `Bearer ${token}` },
+        headers: SHIPROCKET_JSON_READ_HEADERS,
       },
-      allowErrorResponseBody: true,
     });
 
     return resolveOrderShowProbeResult({
@@ -352,17 +240,16 @@ export class ShiprocketBookingService {
           method: "POST",
           path: SHIPROCKET_CREATE_ADHOC_ORDER_PATH,
           headers: { authorization: `Bearer ${token}` },
-          body: buildAdhocOrderPayload(request),
+          body: buildShiprocketAdhocOrderPayload({
+            request,
+            strictLive: isStrictLiveShiprocketBooking(ctx.config.environment),
+          }),
         },
         allowErrorResponseBody: true,
       });
     } catch (error) {
       if (error instanceof ProviderAdapterError) {
-        const recovered = await this.fetchExistingOrderSnapshot(
-          channelOrderId,
-          token,
-          ctx,
-        );
+        const recovered = await this.fetchExistingOrderSnapshot(channelOrderId, ctx);
         if (recovered) {
           return recovered;
         }
@@ -382,11 +269,7 @@ export class ShiprocketBookingService {
     }
 
     if (createResponse.status < 200 || createResponse.status >= 300) {
-      const recovered = await this.fetchExistingOrderSnapshot(
-        channelOrderId,
-        token,
-        ctx,
-      );
+      const recovered = await this.fetchExistingOrderSnapshot(channelOrderId, ctx);
       if (recovered) {
         return recovered;
       }
@@ -489,7 +372,6 @@ export class ShiprocketBookingService {
     if (!awbCode) {
       const afterAssignShow = await this.fetchExistingOrderSnapshot(
         channelOrderId,
-        token,
         ctx,
       );
       const showAwb = confirmedShiprocketAwbCode(afterAssignShow?.awbCode ?? null);

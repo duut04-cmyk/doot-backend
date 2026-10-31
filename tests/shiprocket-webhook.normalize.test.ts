@@ -103,6 +103,44 @@ describe("normalizeShiprocketTrackingWebhook", () => {
       return;
     }
     expect(result.scans[0]?.skipForwardDeliveryLifecycle).toBe(true);
+    expect(result.scans[0]?.metadata.shiprocketIsReturn).toBe(true);
+  });
+
+  it("normalizes delivery-attempt and RTO-style scan labels without lifecycle skip", () => {
+    const attempt = normalizeShiprocketTrackingWebhook({
+      awb: "SR123456789IN",
+      sr_order_id: "9001",
+      is_return: false,
+      scans: [
+        {
+          date: "2026-03-30 15:00:00",
+          activity: "Customer unavailable",
+          location: "Mumbai",
+          status: "Delivery attempted",
+          status_id: 21,
+        },
+      ],
+    });
+    expect(attempt.action).toBe("events");
+    if (attempt.action !== "events") {
+      return;
+    }
+    expect(attempt.scans[0]?.status).toBe("Delivery attempted");
+    expect(attempt.scans[0]?.skipForwardDeliveryLifecycle).toBe(false);
+
+    const rto = normalizeShiprocketTrackingWebhook({
+      awb: "SR123456789IN",
+      sr_order_id: "9001",
+      is_return: true,
+      current_status: "RTO IN TRANSIT",
+      current_timestamp: "2026-03-30 16:00:00",
+    });
+    expect(rto.action).toBe("events");
+    if (rto.action !== "events") {
+      return;
+    }
+    expect(rto.isReturn).toBe(true);
+    expect(rto.scans[0]?.skipForwardDeliveryLifecycle).toBe(true);
   });
 
   it("documents max body size guard used by service", () => {

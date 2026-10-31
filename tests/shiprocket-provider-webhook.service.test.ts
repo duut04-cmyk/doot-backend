@@ -11,7 +11,8 @@ vi.mock("../src/config/env.js", async (importOriginal) => {
     env: {
       ...actual.env,
       SHIPROCKET_WEBHOOK_ENABLED: true,
-      SHIPROCKET_WEBHOOK_API_KEY: webhookApiKey,
+      SHIPROCKET_WEBHOOK_TOKEN: webhookApiKey,
+      SHIPROCKET_WEBHOOK_API_KEY: undefined,
     },
     requireShiprocketWebhookApiKey: () => webhookApiKey,
   };
@@ -323,6 +324,44 @@ describe("ShiprocketProviderWebhookService", () => {
       }),
     ).rejects.toMatchObject({ code: ErrorCodes.VALIDATION_ERROR });
     expect(webhookRepo.events.size).toBe(0);
+  });
+
+  it("records delivery-attempt scans without marking DELIVERED or bypassing OTP", async () => {
+    const seeded = await seedShiprocketBooked();
+    await deliveryRepo.transitionStatus({
+      deliveryId: seeded.deliveryId,
+      expectedFromStatuses: ["BOOKED"],
+      toStatus: "DELIVERY_OTP_PENDING",
+      source: "OTP",
+      reason: "test",
+    });
+
+    await service.handle({
+      requestId: "req-attempt",
+      rawBody: buildPayload({
+        scans: [
+          {
+            date: "2026-03-29 16:00:00",
+            status: "Delivery attempted",
+            activity: "Undelivered",
+            location: "Customer",
+            status_id: 21,
+          },
+          {
+            date: "2026-03-29 17:00:00",
+            status: "Delivered",
+            activity: "Delivered",
+            location: "Customer",
+            status_id: 7,
+          },
+        ],
+      }),
+      apiKey: webhookApiKey,
+    });
+
+    expect(trackingRepo.points.length).toBeGreaterThanOrEqual(2);
+    const delivery = await deliveryRepo.findById(seeded.deliveryId);
+    expect(delivery?.status).toBe("DELIVERY_OTP_PENDING");
   });
 
   it("does not mark delivery DELIVERED from tracking webhook", async () => {

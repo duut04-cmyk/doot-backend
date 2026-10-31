@@ -21,6 +21,8 @@ import { GoogleGeocodingClient } from "../src/infrastructure/geocoding/google-ge
 import { parseShiprocketHyperlocalServiceability } from "../src/modules/provider/adapters/shiprocket/shiprocket-hyperlocal.parser.js";
 import { ShiprocketHyperlocalServiceabilityService } from "../src/modules/provider/adapters/shiprocket/shiprocket-hyperlocal.serviceability.js";
 import { ShiprocketAuthService } from "../src/modules/provider/adapters/shiprocket/shiprocket-auth.service.js";
+import { InMemoryShiprocketAuthRefreshLock } from "../src/modules/provider/adapters/shiprocket/shiprocket-auth-refresh.lock.js";
+import { InMemoryProviderAuthTokenRepository } from "./helpers/in-memory-provider-auth-token.repository.js";
 import type { ProviderRuntimeConfig } from "../src/modules/provider/adapters/provider-config.types.js";
 import type { ServiceabilityRequest } from "../src/modules/provider/contracts/serviceability.js";
 
@@ -107,6 +109,163 @@ describe("Shiprocket hyperlocal serviceability", () => {
     expect(parsed.candidates).toHaveLength(0);
   });
 
+  it("fetchRates returns zero candidates for status=false no serviceability (HTTP 200)", async () => {
+    const loginFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "auth-login-success.json"), "utf8"),
+    );
+    const noSvcFixture = JSON.parse(
+      readFileSync(
+        join(fixtureDir, "hyperlocal-serviceability-no-serviceability.json"),
+        "utf8",
+      ),
+    );
+
+    const geocodeFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                address_components: [
+                  { long_name: "132001", short_name: "132001", types: ["postal_code"] },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const geocoding = new GoogleGeocodingClient(geocodeFetch as typeof fetch);
+
+    const httpFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.includes("/auth/login")) {
+        return new Response(JSON.stringify(loginFixture), { status: 200 });
+      }
+      if (method === "GET" && url.includes("/courier/serviceability")) {
+        return new Response(JSON.stringify(noSvcFixture), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const { ProviderHttpClient } =
+      await import("../src/modules/provider/adapters/provider-http-client.js");
+    const http = new ProviderHttpClient(httpFetch as typeof fetch);
+    const auth = new ShiprocketAuthService(
+      http,
+      new InMemoryProviderAuthTokenRepository(),
+      new InMemoryShiprocketAuthRefreshLock(),
+    );
+    auth.clearCacheForTests();
+
+    const service = new ShiprocketHyperlocalServiceabilityService(
+      http,
+      auth,
+      geocoding,
+    );
+    const result = await service.fetchRates(baseRequest, {
+      requestId: "req-hl-no-svc",
+      config: runtimeConfig,
+    });
+
+    expect(result.candidates).toHaveLength(0);
+    expect(result.serviceability.serviceable).toBe(false);
+    expect(result.serviceability.reason).toBe("No serviceability found");
+  });
+
+  it("fetchRates throws on HTTP 401 provider failure", async () => {
+    const geocodeFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                address_components: [
+                  { long_name: "110001", short_name: "110001", types: ["postal_code"] },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const geocoding = new GoogleGeocodingClient(geocodeFetch as typeof fetch);
+    const httpFetch = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    const { ProviderHttpClient } =
+      await import("../src/modules/provider/adapters/provider-http-client.js");
+    const http = new ProviderHttpClient(httpFetch as typeof fetch);
+    const auth = new ShiprocketAuthService(
+      http,
+      new InMemoryProviderAuthTokenRepository(),
+      new InMemoryShiprocketAuthRefreshLock(),
+    );
+    const service = new ShiprocketHyperlocalServiceabilityService(
+      http,
+      auth,
+      geocoding,
+    );
+
+    await expect(
+      service.fetchRates(baseRequest, { requestId: "req-401", config: runtimeConfig }),
+    ).rejects.toMatchObject({ category: "PROVIDER_AUTHENTICATION_ERROR" });
+  });
+
+  it("fetchRates throws on malformed serviceability JSON body", async () => {
+    const loginFixture = JSON.parse(
+      readFileSync(join(fixtureDir, "auth-login-success.json"), "utf8"),
+    );
+    const geocodeFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                address_components: [
+                  { long_name: "110001", short_name: "110001", types: ["postal_code"] },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const geocoding = new GoogleGeocodingClient(geocodeFetch as typeof fetch);
+    const httpFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.includes("/auth/login")) {
+        return new Response(JSON.stringify(loginFixture), { status: 200 });
+      }
+      if (method === "GET" && url.includes("/courier/serviceability")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const { ProviderHttpClient } =
+      await import("../src/modules/provider/adapters/provider-http-client.js");
+    const http = new ProviderHttpClient(httpFetch as typeof fetch);
+    const auth = new ShiprocketAuthService(
+      http,
+      new InMemoryProviderAuthTokenRepository(),
+      new InMemoryShiprocketAuthRefreshLock(),
+    );
+    auth.clearCacheForTests();
+    const service = new ShiprocketHyperlocalServiceabilityService(
+      http,
+      auth,
+      geocoding,
+    );
+
+    await expect(
+      service.fetchRates(baseRequest, {
+        requestId: "req-malformed",
+        config: runtimeConfig,
+      }),
+    ).rejects.toMatchObject({ category: "PROVIDER_UNKNOWN_ERROR" });
+  });
+
   it("fetchRates geocodes, authenticates, and returns quote candidates", async () => {
     const loginFixture = JSON.parse(
       readFileSync(join(fixtureDir, "auth-login-success.json"), "utf8"),
@@ -158,7 +317,11 @@ describe("Shiprocket hyperlocal serviceability", () => {
     const { ProviderHttpClient } =
       await import("../src/modules/provider/adapters/provider-http-client.js");
     const http = new ProviderHttpClient(httpFetch as typeof fetch);
-    const auth = new ShiprocketAuthService(http);
+    const auth = new ShiprocketAuthService(
+      http,
+      new InMemoryProviderAuthTokenRepository(),
+      new InMemoryShiprocketAuthRefreshLock(),
+    );
     auth.clearCacheForTests();
 
     const service = new ShiprocketHyperlocalServiceabilityService(

@@ -41,6 +41,30 @@ export function getErrorCauseChain(error: unknown): unknown[] {
   return chain;
 }
 
+export function isPrismaRuntimeConnectivityError(error: unknown): boolean {
+  for (const item of getErrorCauseChain(error)) {
+    const code = errorCode(item);
+    if (code === "P1001" || code === "P1017" || code === "P2024") {
+      return true;
+    }
+    if (item instanceof Error) {
+      if (item.name === "PrismaClientInitializationError") {
+        return true;
+      }
+      const message = item.message;
+      if (
+        message.includes("DATABASE_URL is required") ||
+        message.includes("Can't reach database server") ||
+        message.includes("max clients reached") ||
+        message.includes("Timed out fetching a new connection")
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function isPlatformRuntimeSettingsStoreUnavailable(error: unknown): boolean {
   for (const item of getErrorCauseChain(error)) {
     const code = errorCode(item);

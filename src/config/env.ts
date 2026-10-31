@@ -6,6 +6,14 @@ loadDotenv({ override: false });
 const emptyToUndefined = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
 
+/** Resolves configured webhook secret; TOKEN is preferred over API_KEY. */
+export function resolveShiprocketWebhookSecretFromEnv(input: {
+  SHIPROCKET_WEBHOOK_TOKEN?: string;
+  SHIPROCKET_WEBHOOK_API_KEY?: string;
+}): string | undefined {
+  return input.SHIPROCKET_WEBHOOK_TOKEN ?? input.SHIPROCKET_WEBHOOK_API_KEY;
+}
+
 /**
  * Central environment configuration.
  *
@@ -229,6 +237,13 @@ const envSchema = z
       .optional()
       .default(false),
 
+    /** Preferred inbound webhook shared secret (Shiprocket dashboard: header x-api-key). */
+    SHIPROCKET_WEBHOOK_TOKEN: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional(),
+    ),
+
+    /** Legacy alias for SHIPROCKET_WEBHOOK_TOKEN (must match TOKEN when both are set). */
     SHIPROCKET_WEBHOOK_API_KEY: z.preprocess(
       emptyToUndefined,
       z.string().min(1).optional(),
@@ -476,13 +491,32 @@ const envSchema = z
       }
     }
 
+    if (
+      data.SHIPROCKET_WEBHOOK_TOKEN &&
+      data.SHIPROCKET_WEBHOOK_API_KEY &&
+      data.SHIPROCKET_WEBHOOK_TOKEN !== data.SHIPROCKET_WEBHOOK_API_KEY
+    ) {
+      const conflictMessage =
+        "SHIPROCKET_WEBHOOK_TOKEN and SHIPROCKET_WEBHOOK_API_KEY must match when both are set";
+      ctx.addIssue({
+        code: "custom",
+        path: ["SHIPROCKET_WEBHOOK_TOKEN"],
+        message: conflictMessage,
+      });
+      ctx.addIssue({
+        code: "custom",
+        path: ["SHIPROCKET_WEBHOOK_API_KEY"],
+        message: conflictMessage,
+      });
+    }
+
     if (data.SHIPROCKET_WEBHOOK_ENABLED && data.NODE_ENV !== "test") {
-      if (!data.SHIPROCKET_WEBHOOK_API_KEY) {
+      if (!resolveShiprocketWebhookSecretFromEnv(data)) {
         ctx.addIssue({
           code: "custom",
-          path: ["SHIPROCKET_WEBHOOK_API_KEY"],
+          path: ["SHIPROCKET_WEBHOOK_TOKEN"],
           message:
-            "SHIPROCKET_WEBHOOK_API_KEY is required when SHIPROCKET_WEBHOOK_ENABLED is true",
+            "SHIPROCKET_WEBHOOK_TOKEN or SHIPROCKET_WEBHOOK_API_KEY is required when SHIPROCKET_WEBHOOK_ENABLED is true",
         });
       }
     }
@@ -672,10 +706,11 @@ export function requireShiprocketWebhookApiKey(): string {
   if (!env.SHIPROCKET_WEBHOOK_ENABLED) {
     throw new Error("SHIPROCKET_WEBHOOK_ENABLED is false");
   }
-  if (!env.SHIPROCKET_WEBHOOK_API_KEY) {
-    throw new Error("SHIPROCKET_WEBHOOK_API_KEY is not configured");
+  const secret = resolveShiprocketWebhookSecretFromEnv(env);
+  if (!secret) {
+    throw new Error("Shiprocket webhook secret is not configured");
   }
-  return env.SHIPROCKET_WEBHOOK_API_KEY;
+  return secret;
 }
 
 export function requireCashfreeCredentials(): {
