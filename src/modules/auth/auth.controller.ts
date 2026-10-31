@@ -112,8 +112,11 @@ export class AuthController {
         );
         return;
       }
-      const result = await this.service.getCurrentUser(req.user.id);
-      res.status(200).json(result);
+      // User already loaded by authenticate middleware — avoid a second DB round-trip.
+      res.status(200).json({
+        success: true,
+        data: { user: req.user },
+      });
     } catch (error) {
       next(error);
     }

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { isPrismaRuntimeConnectivityError } from "../../modules/runtime-settings/runtime-settings.storage-errors.js";
 import { AppError } from "../errors/app-error.js";
 import { ErrorCodes } from "../errors/error-codes.js";
 
@@ -42,11 +43,13 @@ export function errorHandlerMiddleware(
     statusCode = 400;
     code = ErrorCodes.VALIDATION_ERROR;
     message = "Request body must be valid JSON.";
+  } else if (isPrismaRuntimeConnectivityError(err)) {
+    statusCode = 503;
+    code = ErrorCodes.SERVICE_UNAVAILABLE;
+    message = "Database temporarily unavailable. Please retry.";
   } else if (err instanceof Error) {
     message =
-      env.NODE_ENV === "production"
-        ? "An unexpected error occurred"
-        : err.message;
+      env.NODE_ENV === "production" ? "An unexpected error occurred" : err.message;
   }
 
   logger.error(
