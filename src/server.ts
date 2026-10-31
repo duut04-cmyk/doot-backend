@@ -61,7 +61,6 @@ async function bootstrap(): Promise<void> {
     void shutdown("SIGTERM");
   });
 }
-
 bootstrap().catch((error: unknown) => {
   logger.error({ err: error }, "Failed to start server");
   process.exit(1);

@@ -57,6 +57,22 @@ describe("admin-panel sessionFromBackend", () => {
         error: { code: "UNAUTHORIZED" },
       }),
     ).toBe(true);
+
+    const expired = jsonResponse(
+      {
+        success: false,
+        error: {
+          code: "TOKEN_EXPIRED",
+          message: "Invalid or expired access token.",
+        },
+      },
+      401,
+    );
+    expect(
+      shouldClearAdminSessionOnBackendResponse(expired, {
+        error: { code: "TOKEN_EXPIRED" },
+      }),
+    ).toBe(true);
   });
 
   it("does not clear session for 403 or 401 without recognized codes", () => {
@@ -130,6 +146,27 @@ describe("admin-panel proxyBackendJson session handling", () => {
       success: false,
       error: "Invalid or expired access token.",
     });
+    expect(expectsSessionClear(setCookieHeader(response))).toBe(true);
+  });
+
+  it("clears cookie on backend 401 TOKEN_EXPIRED", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          success: false,
+          error: {
+            code: "TOKEN_EXPIRED",
+            message: "Invalid or expired access token.",
+          },
+        },
+        401,
+      ),
+    );
+    const response = await proxyBackendJsonGet("/api/v1/admin/deliveries", "Failed.", {
+      fetch,
+      parse: parseBackendJson,
+    });
+    expect(response.status).toBe(401);
     expect(expectsSessionClear(setCookieHeader(response))).toBe(true);
   });
 
